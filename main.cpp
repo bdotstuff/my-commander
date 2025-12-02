@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <list>
 #include <vector>
+#include <SFML-3.0.2/include/SFML/Graphics.hpp>
+
 
 using namespace std;
 namespace fs = std::filesystem;
