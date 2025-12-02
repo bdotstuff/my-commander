@@ -55,9 +55,11 @@ fs::path _get_file_path_at(int position, std::vector<pathVector> givenList) { //
     else return givenList[position].path;
 }
 
-std::vector<pathVector> _deselect_all(std::vector<pathVector> givenList) {
-    for (int i = 0; i < givenList.size(); i++) givenList[i].selected = false;
-    return givenList;
+void _deselect_all() {
+    selectedList.clear();
+    for (int i = 0; i < currentList.size(); i++) currentList[i].selected = false;
+    for (int i = 0; i < leftList.size(); i++) leftList[i].selected = false;
+    for (int i = 0; i < rightList.size(); i++) rightList[i].selected = false;
 }
 
 std::vector<pathVector> _switch_current_list(std::string side) { // could be called whenever the active side is changed, but instead of identity it checks for cursor position
@@ -134,7 +136,7 @@ void _command_select(std::string input) {
             }
         }
         if (alreadySelected != -1) {
-            std::cout << "Unselected path " << selectedList[alreadySelected].path << std::endl;
+            std::cout << "Deselected path " << selectedList[alreadySelected].path << std::endl;
             selectedList.erase(selectedList.begin() + alreadySelected);
             currentList[stoi(input)].selected = false;
         }
@@ -185,14 +187,18 @@ void _command_paste(std::string input) {
     else std::cout << "Mode not specified. Skipping";
 }
 
-void _command_delete(std::string input) {
-    input.erase(0, 7);
-    if (!_check_validity_of_input(input)) return;
-    else {
-        fs::path p = _get_file_path_at(std::stoi(input), currentList);
+void _command_delete() {
+    if (selectedList.size() == 0) {
+        std::cout << "Selection list is empty. Deleted nothing" << std::endl;
+        return;
+    }
+    for (int i=0;i<selectedList.size();i++) {
+        fs::path p = selectedList[i].path;
         std::cout << "Deleting path: " << p << std::endl;
         fs::remove(p);
     }
+    std::cout << "New path contents are: " << currentPath << std::endl;
+    currentList = _update_list(currentPath);
 }
 
 int main()
@@ -211,16 +217,18 @@ int main()
         std::cout << "Enter the number of a line to return the path at said directory" << std::endl;
         getline(std::cin, input);
 
-        if (input.substr(0, 4) == "open" and input[4] == ' ' and input.size() > 4) { // Opens a file
+        if (input.substr(0, 4) == "open" and input[4] == ' ' and input.size() > 4) // Opens a file
             _command_open_file(input);
-        }
 
-        else if (input == "back") { // Move one step back in the directory, until Root
+        else if (input == "back") // Move one step back in the directory, until Root
             _command_back(currentList);
-        }
 
         else if (input.substr(0, 6) == "select" and input[6] == ' ' and input.size() > 6) // Apply a selection tag to the given element + adds it to a selection list
             _command_select(input);
+
+        else if (input == "deselect all") {
+            _deselect_all();
+        }
 
         else if (input == "copy") // Copies the selected list
             _command_copy();
@@ -228,8 +236,8 @@ int main()
         else if (input.substr(0, 5) == "paste" and input[5] == ' ' and input.size() > 5) // Pastes the currently copied path of a file in the current directory
             _command_paste(input);
 
-        else if (input.substr(0, 6) == "delete" and input[6] == ' ' and input.size() > 6)
-            _command_delete(input);
+        else if (input == "delete")
+            _command_delete();
 
         else if (input == "print")
             _print_vector(currentList);
