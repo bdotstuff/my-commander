@@ -15,11 +15,12 @@ struct pathVector {
 
 //std::vector<pathVector> currentDisplayedList; // unused
 std::vector<pathVector> currentList; // the list that is currently accessed
-std::vector<pathVector> leftList, rightList; // lists on the left/right
+std::vector<pathVector> leftList, rightList; // lists on the left/right, probably gonna use them to render the contents of the windows at the same time
 std::vector<pathVector> selectedList; // when selecting files, append them to this vector
 std::vector<pathVector> copiedList; // when executing a copy command, append selectedList to this
 fs::path currentPath; // the current path that is used
 fs::path leftPath, rightPath; // path on the left tab, respectively on the right tab
+std::string sideTag = "left"; // either left or right to determine which side of the window is being updated
 //fs::path copyPath;
 
 void _print_path(fs::path what) {
@@ -55,26 +56,15 @@ fs::path _get_file_path_at(int position, std::vector<pathVector> givenList) { //
     else return givenList[position].path;
 }
 
-void _deselect_all() {
-    selectedList.clear();
-    for (int i = 0; i < currentList.size(); i++) currentList[i].selected = false;
-    for (int i = 0; i < leftList.size(); i++) leftList[i].selected = false;
-    for (int i = 0; i < rightList.size(); i++) rightList[i].selected = false;
-}
-
 std::vector<pathVector> _switch_current_list(std::string side) { // could be called whenever the active side is changed, but instead of identity it checks for cursor position
     if (side == "left" or side == "right") {
         std::cout << "Changed current path to ";
-        if (side == "left") {
-            rightPath = currentPath;
+        if (side == "left" and currentPath != leftPath)
             currentPath = leftPath;
-        }
-        else if (side == "right") {
-            leftPath = currentPath;
+        else if (side == "right" and currentPath != rightPath)
             currentPath = rightPath;
-        }
+        sideTag = side;
         std::cout << currentPath << std::endl;
-
         std::cout << "The following files exist: " << std::endl;
     }
     else std::cout << "Invalid side, path remains the same: " << currentPath << std::endl;
@@ -149,6 +139,13 @@ void _command_select(std::string input) {
             std::cout << "Selected path " << selectedList.back().path << std::endl;
         }
     }
+}
+
+void _command_deselect_all() {
+    selectedList.clear();
+    for (int i = 0; i < currentList.size(); i++) currentList[i].selected = false;
+    for (int i = 0; i < leftList.size(); i++) leftList[i].selected = false;
+    for (int i = 0; i < rightList.size(); i++) rightList[i].selected = false;
 }
 
 void _command_copy() {
@@ -226,9 +223,8 @@ int main()
         else if (input.substr(0, 6) == "select" and input[6] == ' ' and input.size() > 6) // Apply a selection tag to the given element + adds it to a selection list
             _command_select(input);
 
-        else if (input == "deselect all") {
-            _deselect_all();
-        }
+        else if (input == "deselect all")
+            _command_deselect_all();
 
         else if (input == "copy") // Copies the selected list
             _command_copy();
@@ -253,6 +249,19 @@ int main()
         }
 
         else std::cout << "Likely invalid command." << std::endl;
+
+        // modify the side that is currently accessed by the current objects so it can be displayed properly
+        if (sideTag == "left") {
+            leftPath = currentPath;
+            leftList = currentList;
+            //_visual_list_updater(leftList) // for updating the visuals on the left side
+        }
+        else if (sideTag == "right") {
+            rightPath = currentPath;
+            rightList = currentList;
+            //_visual_list_updater(rightList) // for updating the visuals on the right side
+        }
+
     }
     return 0;
 }
