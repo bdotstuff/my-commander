@@ -2,268 +2,268 @@
 #include <iostream>
 #include <filesystem>
 #include <windows.h>
-#include <list>
 #include <vector>
-#include <SFML-3.0.2/include/SFML/Graphics.hpp>
+#include <algorithm> //pentru count_if si find_if in functia _command_rename()
+#include <SFML/Window.hpp>
 
-
-using namespace std;
 namespace fs = std::filesystem;
 
-struct pathVector {
+// Nici nu ne trebuie index, putem sa facem window[current].list[index] (vezi putin mai jos)
+struct entry {
     fs::path path;
-    bool selected = false; // pentru a identifica vizual fisierele selectate: false - regular, true - chenar alb sau ceva
+    bool selected;
 };
 
-//std::vector<pathVector> currentDisplayedList; // unused
-std::vector<pathVector> currentList; // the list that is currently accessed
-std::vector<pathVector> leftList, rightList; // lists on the left/right, probably gonna use them to render the contents of the windows at the same time
-std::vector<pathVector> selectedList; // when selecting files, append them to this vector
-std::vector<pathVector> copiedList; // when executing a copy command, append selectedList to this
-fs::path currentPath; // the current path that is used
-fs::path leftPath, rightPath; // path on the left tab, respectively on the right tab
-std::string sideTag = "left"; // either left or right to determine which side of the window is being updated
-//fs::path copyPath;
+int current;
 
-void _print_path(fs::path what) {
-    std::cout << what << std::endl;
+// Pentru a copia/muta entry-urile selectate dintr-o lista in alta, trebuie sa stim path-ul directorului corespunzator listei destinatie. Asadar, am grupat intr-un struct lista impreuna cu aceasta informatie
+// Asadar, variabila current va face alegerea intre window-uri, nu intre liste.
+// !Ar trebui sa ne decidem la un nume mai bun pentru acest struct, libraria grafica va avea cel mai probabil si ea o variabila cu un nume window...
+
+// alternativ o denumesti incepand cu litera mica, in general variabilele la librariile astea grafice au litera mare
+// -- redenumit to fileWindow (self explanatory. fereastra in care afisezi fisiere)
+
+struct fileWindow {
+    fs::path currentPath;
+    std::vector<entry> list;
+} filewindow[2];
+
+// Functii ajutatoare, nu le modific momentan
+void _print_path(fs::path path) {
+    std::cout << path << std::endl;
 }
-void _print_vector(std::vector<pathVector> what) {
-    for (int i = 0; i < what.size(); i++) {
-        std::cout << what[i].path << " " << what[i].selected;
-        if (what[i].selected) std::cout << " <-- ";
-        std::cout << std::endl;
-    }
-}
-
-std::vector<pathVector> _update_list(fs::path newPath) { // remakes the visualized list
-    std::vector<pathVector> newDisplayedList;
-    std::cout<<newPath<<std::endl;
-
+void _print_list(std::vector<entry> list) {
     int index = 0;
-
-    for (const auto & entry : fs::directory_iterator(newPath)) {
-        std::cout << "| " << entry.path() << " at position " << index << std::endl;
-        index ++;
-        pathVector constructPath;
-        constructPath.path = entry.path();
-        constructPath.selected = false;
-        newDisplayedList.push_back(constructPath);
+    for (auto e : list) {
+        std::cout << e.path << " " << e.selected << " " << index << "\n";
+        index++;
     }
-    return newDisplayedList;
 }
 
-fs::path _get_file_path_at(int position, std::vector<pathVector> givenList) { // retrieves the file at the given position
-    if (position > givenList.size()-1) std::cout << "Index above number of files included. Aborting search." << std::endl;
-    else return givenList[position].path;
-}
-
-std::vector<pathVector> _switch_current_list(std::string side) { // could be called whenever the active side is changed, but instead of identity it checks for cursor position
-    if (side == "left" or side == "right") {
-        std::cout << "Changed current path to ";
-        if (side == "left" and currentPath != leftPath)
-            currentPath = leftPath;
-        else if (side == "right" and currentPath != rightPath)
-            currentPath = rightPath;
-        sideTag = side;
-        std::cout << currentPath << std::endl;
-        std::cout << "The following files exist: " << std::endl;
+// Am modificat numele si return type-ul functiei, pentru ca ne trebuie si currentPath
+fileWindow _update_window(fs::path newPath) {
+    fileWindow window;
+    window.currentPath = newPath;
+    for (auto& e : fs::directory_iterator(newPath)) {
+        entry temp;
+        temp.path = e.path();
+        temp.selected = false;
+        window.list.push_back(temp);
     }
-    else std::cout << "Invalid side, path remains the same: " << currentPath << std::endl;
-    return _update_list(currentPath);
+    return window;
 }
 
-bool _check_validity_of_input(std::string input) { // Default check if the input that leads to a file index is a number
-    bool ok = true;
-    for (int i=0;i<input.length();i++)
-        if (input[i] > '9' || input[i] < '0') {
-            ok = false;
-            break;
+// Posibil sa nu trebuiasca: atunci cand se da click, ar veni o simpla atribuire pentru variabila current
+
+// true that, doar ar trebui schimbat current si executate functii asupra window[current]
+//
+//std::vector<pathVector> _switch_current_list(std::string side) { // could be called whenever the active side is changed, but instead of identity it checks for cursor position
+//    if (side == "left" or side == "right") {
+//        std::cout << "Changed current path to ";
+//        if (side == "left") {
+//            rightPath = currentPath;
+//            currentPath = leftPath;
+//        }
+//        else if (side == "right") {
+//            leftPath = currentPath;
+//            currentPath = rightPath;
+//        }
+//        std::cout << currentPath << std::endl;
+//
+//        std::cout << "The following files exist: " << std::endl;
+//    }
+//    else std::cout << "Invalid side, path remains the same: " << currentPath << std::endl;
+//    return _update_list(currentPath);
+//}
+//
+
+// Face parte din prototipul command-line. Nu modific
+//bool _check_validity_of_input(std::string input) { // Default check if the input that leads to a file index is a number
+//    bool ok = true;
+//    for (int i=0;i<input.length();i++)
+//        if (input[i] > '9' || input[i] < '0') {
+//            ok = false;
+//            break;
+//        }
+//    if (!ok)
+//        std::cout << "Given argument is not a number. Skipping" << std::endl;
+//    else if (stoi(input) >= currentList.size()) {
+//        std::cout << "Index above number of files included. Aborting search" << std::endl;
+//        ok = false;
+//    }
+//    return ok;
+//}
+
+// Am folosit is_directory si am redenumit functia, pentru ca deschide si directoare, nu numai fisiere
+// De asemenea, am dat index ul ca parametru in loc de path, ramane sa discutam cum e mai bine
+
+// am impresia ca prin click oricum va trebui sa iteram prin fiecare element pt a vedea care ii selectat... ambele merg, index pare mai intuitiv
+void _command_open(fileWindow& window, int index) {
+    if (is_directory(window.list[index].path)) {
+        //std::cout << window.list[index].path << is_directory(window.list[index].path);
+        window = _update_window(window.list[index].path);
+    }
+    else { // Automatically find a matching app to open the given file
+        ShellExecute(NULL, "open", window.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
+        //std::cout << "Opening file: " << p.filename() << " with extension: " << p.extension() << std::endl;
+    }
+}
+
+void _command_back(fileWindow& window) {
+    window = _update_window(window.currentPath.parent_path());
+}
+
+// Algoritmi de selectare mai multe fisiere, deselectare cand selectezi numai 1, etc. vor fi scrisi in event loop-ul librariei grafice pe care o vom folosi.
+// Ma gandesc ca functia asta e prea simpla, deci probabil in viitor o vom sterge, si vom creea functii mai complexe care contin instructiunea asta, pe care le vom apela in event loop
+
+// corect, ar trebui sa fie parte din multi-select in care trimiti un array
+void _command_select(fileWindow& window, int index) {
+    window.list[index].selected = true;
+}
+// Am adaugat si functia asta de-un caz de ceva, dar conceptul ramane acelasi cu functia de mai sus
+void _command_deselect(fileWindow& window, int index) {
+    window.list[index].selected = false;
+}
+
+// Am folosit functia copy din <filesystem>
+// Functiile de manipulare a fisierelor sunt asemanatoare
+// Poate la rename e mai sofisticat, caci trebuie sa dam numele fisierului chiar in aplicatie, dar asta ramane sa facem in event loop
+void _command_copy(fileWindow source, fileWindow& dest) {
+    for (auto e : source.list) {
+        if (e.selected == true) {
+            copy(e.path, dest.currentPath);
         }
-    if (!ok)
-        std::cout << "Given argument is not a number. Skipping" << std::endl;
-    else if (stoi(input) >= currentList.size()) {
-        std::cout << "Index above number of files included. Aborting search" << std::endl;
-        ok = false;
     }
-    return ok;
+    dest = _update_window(dest.currentPath); //dam un "refresh" window-urilor date prin referinta
 }
 
-void _command_open_file(std::string input) {
-    input.erase(0, 5);
-    if (!_check_validity_of_input(input)) return;
+
+// Move se implementeaza cu rename, asa scrie si in documentatie
+void _command_move(fileWindow& source, fileWindow& dest) {
+    for (auto e : source.list) {
+        if (e.selected == true) {
+            rename(e.path, dest.currentPath / e.path.filename()); // slash-ul e overload pentru concatenare de path-uri. vezi documentatia pentru clasa path si exemplele pentru rename
+        }
+    }
+    source = _update_window(source.currentPath);
+    dest = _update_window(dest.currentPath);
+}
+void _command_delete(fileWindow& window) {
+    for (auto e : window.list) {
+        if (e.selected == true) {
+            remove(e.path);
+        }
+    }
+    window = _update_window(window.currentPath);
+}
+// Momentan, redenumirea se face doar asupra unui singur fisier. Altfel, trebuie sa adaugam (nr) la finalul numelor fisierelor, deci verific daca doar un singur fisier e selectat.
+void _command_rename(fileWindow& window, fs::path newName) {
+    auto first = window.list.begin();
+    auto last = window.list.end();
+    auto is_selected = [](entry e) {return e.selected == true; }; // o functie care este apelata de count_if pentru fiecare element din lista
+    if (count_if(first, last, is_selected) == 1) {
+        std::cout << "Exactly one file must be selected for renaming";
+    }
     else {
-        fs::path p = _get_file_path_at(std::stoi(input), currentList);
-
-        if (fs::status(p).type() == fs::file_type::directory) { // Go further in the directory
-            std::cout << "Opening directory: ";
-            currentPath = p;
-            currentList = _update_list(currentPath);
-        }
-        else { // Automatically find a matching app to open the given file
-            ShellExecute(NULL, "open", p.string().c_str(), NULL, NULL, SW_SHOW);
-            std::cout << "Opening file: " << p.filename() << " with extension: " << p.extension() << std::endl;
-        }
+        auto selectedEntry = find_if(first, last, is_selected); // entry-ul care are .selected = true
+        rename(selectedEntry->path, selectedEntry->path.parent_path() / newName); // merge si window.currentPath / newName
     }
+    window = _update_window(window.currentPath);
 }
 
-void _command_back(std::vector<pathVector> currentList) {
-    if (currentPath != currentPath.root_path()) {
-        std::cout << "Going back to previous directory." << std::endl;
-        currentPath = currentPath.parent_path();
-        currentList = _update_list(currentPath);
-    }
-    else std::cout << "Already reached the root folder." << std::endl;
-}
-
-void _command_select(std::string input) {
-    input.erase(0, 7);
-    if (!_check_validity_of_input(input)) return;
-    else {
-        int alreadySelected = -1;
-        for (int i=0; i<selectedList.size(); i++) {
-            if (selectedList[i].path == currentList[stoi(input)].path) {
-                alreadySelected = i;
-                break;
-            }
-        }
-        if (alreadySelected != -1) {
-            std::cout << "Deselected path " << selectedList[alreadySelected].path << std::endl;
-            selectedList.erase(selectedList.begin() + alreadySelected);
-            currentList[stoi(input)].selected = false;
-        }
-        else {
-            pathVector p;
-            p.path = _get_file_path_at(std::stoi(input), currentList);
-            p.selected = true;
-            selectedList.push_back(p);
-            currentList[stoi(input)].selected = true;
-            std::cout << "Selected path " << selectedList.back().path << std::endl;
-        }
-    }
-}
-
-void _command_deselect_all() {
-    selectedList.clear();
-    for (int i = 0; i < currentList.size(); i++) currentList[i].selected = false;
-    for (int i = 0; i < leftList.size(); i++) leftList[i].selected = false;
-    for (int i = 0; i < rightList.size(); i++) rightList[i].selected = false;
-}
-
-void _command_copy() {
-    copiedList = selectedList;
-    std::cout << "Copied list in selectedList to copiedList: [";
-    for (int i=0;i<copiedList.size();i++)
-        std::cout << copiedList[i].path << ", ";
-    std::cout << "]" << std::endl;
-}
-
-void _command_paste(std::string input) {
-    input.erase(0, 6);
-    if (input == "COPY" || input == "PASTE") {
-        bool isEmpty = false;
-        for (int i=0;i<copiedList.size();i++) {
-            if (copiedList[i].path == "") {
-                isEmpty = true;
-                break;
-            }
-        }
-        if (!isEmpty) {
-            std::cout << "Copied the copiedList (of size " << copiedList.size() << ") to " << currentPath << std::endl;
-            for (int i=0;i<copiedList.size();i++) {
-                fs::path p = currentPath;
-                p += "\\";
-                p += copiedList[i].path.filename();
-                std::cout << p << std::endl;
-                fs::copy(copiedList[i].path, p, fs::copy_options::overwrite_existing);
-            }
-            currentList = _update_list(currentPath);
-        }
-        else {
-            std::cout << "Copy path is empty." << std::endl;
-        }
-    }
-    else std::cout << "Mode not specified. Skipping";
-}
-
-void _command_delete() {
-    if (selectedList.size() == 0) {
-        std::cout << "Selection list is empty. Deleted nothing" << std::endl;
-        return;
-    }
-    for (int i=0;i<selectedList.size();i++) {
-        fs::path p = selectedList[i].path;
-        std::cout << "Deleting path: " << p << std::endl;
-        fs::remove(p);
-    }
-    std::cout << "New path contents are: " << currentPath << std::endl;
-    currentList = _update_list(currentPath);
-}
+// Ideea de baza la Total Commander este ca fisierele se copie/muta instant dintr-o parte in alta, nu e ca in Explorer, unde trebuie sa spui ce fisiere vrei sa copiezi/muti, apoi sa te duci in alt director si sa dai paste acolo. In schimb, exista pur si simplu un buton care, cand il apesi, face copierea/mutarea din prima.
+// Asadar, nu modific functia asta
+//
+// de sters eventual atunci, vedem
+//void _command_paste(std::string input) {
+//    input.erase(0, 6);
+//    if (input == "COPY" || input == "PASTE") {
+//        bool isEmpty = false;
+//        for (int i=0;i<copiedList.size();i++) {
+//            if (copiedList[i].path == "") {
+//                isEmpty = true;
+//                break;
+//            }
+//        }
+//        if (!isEmpty) {
+//            std::cout << "Copied the copiedList (of size " << copiedList.size() << ") to " << currentPath << std::endl;
+//            for (int i=0;i<copiedList.size();i++) {
+//                fs::path p = currentPath;
+//                p += "\\";
+//                p += copiedList[i].path.filename();
+//                std::cout << p << std::endl;
+//                fs::copy(copiedList[i].path, p, fs::copy_options::overwrite_existing);
+//            }
+//            currentList = _update_list(currentPath);
+//        }
+//        else {
+//            std::cout << "Copy path is empty." << std::endl;
+//        }
+//    }
+//    else std::cout << "Mode not specified. Skipping";
+//}
 
 int main()
 {
-    leftPath = "C:\\"; // At least on CLion, C: redirects to the current code of the .cpp file. Use C:\\ for the actual C root drive
-    rightPath = "D:\\";
-    currentPath = leftPath;
-
     std::string input;
 
-    currentList = _update_list(currentPath);
-    leftList = currentList;
-    rightList = _update_list(rightPath);
+    current = 0;
+    filewindow[0] = _update_window(fs::current_path());
+    filewindow[1] = _update_window(fs::current_path());
+    //_print_path(window[0].currentPath);
+    //_print_list(window[0].list);
+    //_print_path(window[0].list[1].path.parent_path());
+
+    sf::Window window;
+    window.create(sf::VideoMode({ 800, 600 }), "My window");
 
     while (true) {
-        std::cout << "Enter the number of a line to return the path at said directory" << std::endl;
+        // Asta tine de prototipul command-line. Nu intru prea mult in detaliu
+        //std::cout << "Enter the number of a line to return the path at said directory" << std::endl; //???
+        std::cout << "Current path: " << filewindow[0].currentPath << "\n\n";
+        _print_list(filewindow[0].list);
+        std::cout << "Enter command: ";
         getline(std::cin, input);
 
-        if (input.substr(0, 4) == "open" and input[4] == ' ' and input.size() > 4) // Opens a file
-            _command_open_file(input);
-
-        else if (input == "back") // Move one step back in the directory, until Root
-            _command_back(currentList);
-
-        else if (input.substr(0, 6) == "select" and input[6] == ' ' and input.size() > 6) // Apply a selection tag to the given element + adds it to a selection list
-            _command_select(input);
-
-        else if (input == "deselect all")
-            _command_deselect_all();
-
-        else if (input == "copy") // Copies the selected list
-            _command_copy();
-
-        else if (input.substr(0, 5) == "paste" and input[5] == ' ' and input.size() > 5) // Pastes the currently copied path of a file in the current directory
-            _command_paste(input);
-
-        else if (input == "delete")
-            _command_delete();
-
-        else if (input == "print")
-            _print_vector(currentList);
-
-        else if (input.substr(0, 9) == "switch to" and input[9] == ' ') { // Moves between the Left and Right tabs (since they show different paths)
-            input.erase(0, 10);
-            currentList = _switch_current_list(input);
+        if (input.substr(0, 4) == "open" && input[4] == ' ' && input.size() > 4) { // Opens a file
+            input.erase(0, 5);
+            _command_open(filewindow[current], stoi(input));
         }
+
+        else if (input == "back") { // Move one step back in the directory, until Root
+            _command_back(filewindow[current]);
+        }
+
+        //else if (input.substr(0, 6) == "select" and input[6] == ' ' and input.size() > 6) // Apply a selection tag to the given element + adds it to a selection list
+        //    _command_select(input);
+
+        //else if (input == "copy") // Copies the selected list
+        //    _command_copy();
+
+        //else if (input.substr(0, 5) == "paste" and input[5] == ' ' and input.size() > 5) // Pastes the currently copied path of a file in the current directory
+        //    _command_paste(input);
+
+        //else if (input.substr(0, 6) == "delete" and input[6] == ' ' and input.size() > 6)
+        //    _command_delete(input);
+
+        //else if (input == "print")
+        //    _print_vector(currentList);
+
+        //else if (input.substr(0, 9) == "switch to" and input[9] == ' ') { // Moves between the Left and Right tabs (since they show different paths)
+        //    input.erase(0, 10);
+        //    currentList = _switch_current_list(input);
+        //}
+
+        //else if(input.substr(0,6) == "rename" and input[6] == ' '){
+        //    _command_rename(input);
+        //}
 
         else if (input == "exit") {
             std::cout << "Exiting..." << std::endl;
             break;
         }
 
-        else std::cout << "Likely invalid command." << std::endl;
-
-        // modify the side that is currently accessed by the current objects so it can be displayed properly
-        if (sideTag == "left") {
-            leftPath = currentPath;
-            leftList = currentList;
-            //_visual_list_updater(leftList) // for updating the visuals on the left side
-        }
-        else if (sideTag == "right") {
-            rightPath = currentPath;
-            rightList = currentList;
-            //_visual_list_updater(rightList) // for updating the visuals on the right side
-        }
-
+        //else std::cout << "Likely invalid command." << std::endl;
     }
     return 0;
 }
