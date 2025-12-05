@@ -5,13 +5,19 @@
 #include <vector>
 #include <algorithm> //pentru count_if si find_if in functia _command_rename()
 #include <SFML/Window.hpp>
+#include <SFML/Graphics.hpp>
+#include <SFML/System.hpp>
 
 namespace fs = std::filesystem;
+
 
 // Nici nu ne trebuie index, putem sa facem window[current].list[index] (vezi putin mai jos)
 struct entry {
     fs::path path;
     bool selected;
+    // sfml properties
+    sf::RectangleShape box;
+    sf::Rect<float> areaBox;
 };
 
 int current;
@@ -27,6 +33,52 @@ struct fileWindow {
     fs::path currentPath;
     std::vector<entry> list;
 } filewindow[2];
+
+sf::Font font("D:\\MyCommander\\out\\build\\x64-Debug\\bin\\utfont.ttf");
+
+int _get_hovered_over_button(fileWindow file, sf::RenderWindow &window) {
+    std::cout << "Checking hovering..." << std::endl;
+    for (int i = 0; i < file.list.size(); i++) {
+        std::cout << file.list[i].areaBox.position.y << " " << file.list[i].areaBox.size.y << " " << sf::Vector2<float>(sf::Mouse::getPosition(window)).y << std::endl;
+        if (file.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
+            return i;
+    }
+    std::cout << "boowomp" << std::endl;
+    return -1;
+}
+
+entry _draw_list_button(sf::Vector2f pos, sf::Vector2f size, entry file, sf::RenderWindow &window) {
+    entry button;
+    sf::RectangleShape box;
+    box.setPosition(pos);
+    box.setSize(size);
+    sf::Rect<float> areaBox(pos, size);
+
+    if (file.selected == true) box.setFillColor(sf::Color(160, 160, 160));
+    else {
+        if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
+            box.setFillColor(sf::Color(70, 70, 70));
+        }
+        else box.setFillColor(sf::Color(30, 30, 30));
+    }
+
+    sf::Text text(font);
+    text.setPosition(pos);
+    text.setFont(font);
+    text.setCharacterSize(16);
+    text.setFillColor(sf::Color::White);
+    text.setString(file.path.string());
+
+    button.box = box;
+    button.areaBox = areaBox;
+    button.selected = file.selected;
+    button.path = file.path;
+
+    window.draw(button.box);
+    window.draw(text);
+
+    return button;
+}
 
 // Functii ajutatoare, nu le modific momentan
 void _print_path(fs::path path) {
@@ -48,10 +100,14 @@ fileWindow _update_window(fs::path newPath) {
         entry temp;
         temp.path = e.path();
         temp.selected = false;
-        window.list.push_back(temp);
+        window.list.push_back({ .path = temp.path, .selected = false });
+        //_get_creation_time(e.path());
     }
+
     return window;
 }
+
+
 
 // Posibil sa nu trebuiasca: atunci cand se da click, ar veni o simpla atribuire pentru variabila current
 
@@ -99,13 +155,16 @@ fileWindow _update_window(fs::path newPath) {
 
 // am impresia ca prin click oricum va trebui sa iteram prin fiecare element pt a vedea care ii selectat... ambele merg, index pare mai intuitiv
 void _command_open(fileWindow& window, int index) {
-    if (is_directory(window.list[index].path)) {
-        //std::cout << window.list[index].path << is_directory(window.list[index].path);
-        window = _update_window(window.list[index].path);
-    }
-    else { // Automatically find a matching app to open the given file
-        ShellExecute(NULL, "open", window.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
-        //std::cout << "Opening file: " << p.filename() << " with extension: " << p.extension() << std::endl;
+    std::cout << "Entered open command!" << std::endl;
+    if (index >= 0) {
+        std::cout << window.list[index].path << std::endl;
+        if (is_directory(window.list[index].path)) {
+            std::cout << "Opening..." << std::endl;
+            window = _update_window(window.list[index].path);
+        }
+        else { // Automatically find a matching app to open the given file
+            ShellExecute(NULL, "open", window.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
+        }
     }
 }
 
@@ -208,14 +267,47 @@ int main()
     std::string input;
 
     current = 0;
-    filewindow[0] = _update_window(fs::current_path());
-    filewindow[1] = _update_window(fs::current_path());
+    filewindow[0] = _update_window("C:");
+    filewindow[1] = _update_window("C:");
+
+    //SYSTEMTIME t = _get_creation_time(filewindow[0].currentPath);
     //_print_path(window[0].currentPath);
     //_print_list(window[0].list);
     //_print_path(window[0].list[1].path.parent_path());
 
-    sf::Window window;
+    sf::RenderWindow window;
     window.create(sf::VideoMode({ 800, 600 }), "My window");
+
+    while (window.isOpen())
+    {
+        window.clear();
+
+        filewindow[current] = _update_window(filewindow[current].currentPath);
+        filewindow[1-current] = _update_window(filewindow[1-current].currentPath);
+
+        for (int i=0;i<filewindow[current].list.size();i++) {
+            filewindow[current].list[i] = _draw_list_button(sf::Vector2f(0, i*25), sf::Vector2f(150, 20), filewindow[current].list[i], window);
+        }
+
+        while (const std::optional event = window.pollEvent()) // event-uri/actiuni din sisteme periferice
+        {
+            if (event->is<sf::Event::Closed>())
+                window.close();
+            if (const auto* resized = event->getIf<sf::Event::Resized>()) // reajustarea marimii la resize
+            {
+                sf::FloatRect visibleArea({0.f, 0.f}, sf::Vector2f(resized->size));
+                window.setView(sf::View(visibleArea));
+            }
+            if (event->is<sf::Event::MouseButtonPressed>()) {
+                if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+                    _command_open(filewindow[current], _get_hovered_over_button(filewindow[current], window));
+                }
+            }
+        }
+
+        window.display();
+    }
+
 
     while (true) {
         // Asta tine de prototipul command-line. Nu intru prea mult in detaliu
@@ -224,6 +316,8 @@ int main()
         _print_list(filewindow[0].list);
         std::cout << "Enter command: ";
         getline(std::cin, input);
+
+        //SYSTEMTIME t = _get_creation_time(filewindow[0].currentPath);
 
         if (input.substr(0, 4) == "open" && input[4] == ' ' && input.size() > 4) { // Opens a file
             input.erase(0, 5);
