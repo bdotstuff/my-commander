@@ -33,6 +33,7 @@ int current;
 struct fileWindow {
     fs::path currentPath;
     std::vector<entry> list;
+    std::string orderType;
 } filewindow[2];
 
 sf::Font font_listFile("D:\\MyCommander\\cmake-build-debug\\bin\\assets\\utfont.ttf");
@@ -93,9 +94,10 @@ void _print_list(std::vector<entry> list) {
 }
 
 // Am modificat numele si return type-ul functiei, pentru ca ne trebuie si currentPath
-fileWindow _update_window(fs::path newPath) {
+fileWindow _update_window(fs::path newPath, std::string sortingType) {
     fileWindow window;
     window.currentPath = newPath;
+    window.orderType = sortingType;
 
     if (newPath.has_relative_path()) {
         entry backButton;
@@ -106,13 +108,57 @@ fileWindow _update_window(fs::path newPath) {
         window.list.push_back(backButton);
     }
 
-    for (auto& e : fs::directory_iterator(newPath)) {
-        entry temp;
-        temp.path = e.path();
-        temp.selected = false;
-        temp.name = e.path().filename().string();
-        window.list.push_back(temp);
+    if (sortingType == "INCREASING") // de la a la z
+    {
+        for (auto& e : fs::directory_iterator(newPath)) {
+            entry temp;
+            temp.path = e.path();
+            temp.selected = false;
+            temp.name = e.path().filename().string();
+            window.list.push_back(temp);
+        }
     }
+    if (sortingType == "DECREASING") // de la z la a
+    {
+        // ts so stupid
+        fileWindow que;
+        for (auto& e : fs::directory_iterator(newPath)) {
+            entry temp;
+            temp.path = e.path();
+            temp.selected = false;
+            temp.name = e.path().filename().string();
+            que.list.push_back(temp);
+        }
+        while (que.list.size() > 0) {
+            window.list.push_back(que.list.back());
+            que.list.pop_back();
+        }
+    }
+    if (sortingType == "DIR_FIRST") // directoare, apoi fisiere normale
+    {
+        std::cout << "sort by directory first" << std::endl;
+        for (auto& e : fs::directory_iterator(newPath)) {
+            if (std::filesystem::is_directory(e.path())) {
+                entry temp;
+                temp.path = e.path();
+                temp.selected = false;
+                temp.name = e.path().filename().string();
+                window.list.push_back(temp);
+            }
+
+        }
+        for (auto& e : fs::directory_iterator(newPath)) {
+            if (!std::filesystem::is_directory(e.path())) {
+                entry temp;
+                temp.path = e.path();
+                temp.selected = false;
+                temp.name = e.path().filename().string();
+                window.list.push_back(temp);
+            }
+        }
+    }
+
+    //mai trebuie adaugate in functie de data etc dar vedem mai tarziu dupa ce facem si afisarea mai ca lumea
     return window;
 }
 
@@ -167,7 +213,7 @@ void _command_open(fileWindow& window, int index) {
         std::cout << window.list[index].path << std::endl;
         if (is_directory(window.list[index].path)) {
             std::cout << "Opening " << window.list[index].path << std::endl;
-            window = _update_window(window.list[index].path);
+            window = _update_window(window.list[index].path, window.orderType);
         }
         else { // Automatically find a matching app to open the given file
             ShellExecute(NULL, "open", window.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
@@ -176,7 +222,7 @@ void _command_open(fileWindow& window, int index) {
 }
 
 void _command_back(fileWindow& window) {
-    window = _update_window(window.currentPath.parent_path());
+    window = _update_window(window.currentPath.parent_path(), window.orderType);
 }
 
 // Algoritmi de selectare mai multe fisiere, deselectare cand selectezi numai 1, etc. vor fi scrisi in event loop-ul librariei grafice pe care o vom folosi.
@@ -200,7 +246,7 @@ void _command_copy(fileWindow source, fileWindow& dest) {
             copy(e.path, dest.currentPath);
         }
     }
-    dest = _update_window(dest.currentPath); //dam un "refresh" window-urilor date prin referinta
+    dest = _update_window(dest.currentPath, dest.orderType); //dam un "refresh" window-urilor date prin referinta
 }
 
 
@@ -211,8 +257,8 @@ void _command_move(fileWindow& source, fileWindow& dest) {
             rename(e.path, dest.currentPath / e.path.filename()); // slash-ul e overload pentru concatenare de path-uri. vezi documentatia pentru clasa path si exemplele pentru rename
         }
     }
-    source = _update_window(source.currentPath);
-    dest = _update_window(dest.currentPath);
+    source = _update_window(source.currentPath, source.orderType);
+    dest = _update_window(dest.currentPath, dest.orderType);
 }
 void _command_delete(fileWindow& window) {
     for (auto e : window.list) {
@@ -220,7 +266,7 @@ void _command_delete(fileWindow& window) {
             remove(e.path);
         }
     }
-    window = _update_window(window.currentPath);
+    window = _update_window(window.currentPath, window.orderType);
 }
 // Momentan, redenumirea se face doar asupra unui singur fisier. Altfel, trebuie sa adaugam (nr) la finalul numelor fisierelor, deci verific daca doar un singur fisier e selectat.
 void _command_rename(fileWindow& window, fs::path newName) {
@@ -234,7 +280,7 @@ void _command_rename(fileWindow& window, fs::path newName) {
         auto selectedEntry = find_if(first, last, is_selected); // entry-ul care are .selected = true
         rename(selectedEntry->path, selectedEntry->path.parent_path() / newName); // merge si window.currentPath / newName
     }
-    window = _update_window(window.currentPath);
+    window = _update_window(window.currentPath, window.orderType);
 }
 
 // Ideea de baza la Total Commander este ca fisierele se copie/muta instant dintr-o parte in alta, nu e ca in Explorer, unde trebuie sa spui ce fisiere vrei sa copiezi/muti, apoi sa te duci in alt director si sa dai paste acolo. In schimb, exista pur si simplu un buton care, cand il apesi, face copierea/mutarea din prima.
@@ -274,8 +320,11 @@ int main()
     std::string input;
 
     current = 0;
-    filewindow[0] = _update_window("C:\\");
-    filewindow[1] = _update_window("C:\\");
+    filewindow[0] = _update_window("C:\\", "INCREASING");
+    filewindow[1] = _update_window("C:\\", "DECREASING");
+
+    filewindow[0].orderType = "DIR_FIRST";
+    filewindow[1].orderType = "DECREASING";
 
     //SYSTEMTIME t = _get_creation_time(filewindow[0].currentPath);
     //_print_path(window[0].currentPath);
@@ -289,8 +338,8 @@ int main()
     {
         window.clear();
 
-        filewindow[0] = _update_window(filewindow[0].currentPath);
-        filewindow[1] = _update_window(filewindow[1].currentPath);
+        filewindow[0] = _update_window(filewindow[0].currentPath, filewindow[0].orderType);
+        filewindow[1] = _update_window(filewindow[1].currentPath, filewindow[1].orderType);
 
         if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + 10) current = 1;
         else current = 0;
