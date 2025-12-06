@@ -18,6 +18,7 @@ struct entry {
     // sfml properties
     sf::RectangleShape box;
     sf::Rect<float> areaBox;
+    std::string name; // pentru ca back-ul sa fie [..]
 };
 
 int current;
@@ -34,12 +35,11 @@ struct fileWindow {
     std::vector<entry> list;
 } filewindow[2];
 
-sf::Font font("D:\\MyCommander\\out\\build\\x64-Debug\\bin\\utfont.ttf");
+sf::Font font_listFile("D:\\MyCommander\\cmake-build-debug\\bin\\assets\\utfont.ttf");
 
-int _get_hovered_over_button(fileWindow file, sf::RenderWindow &window) {
+int _get_hovered_over_list_button(fileWindow file, sf::RenderWindow &window) {
     std::cout << "Checking hovering..." << std::endl;
     for (int i = 0; i < file.list.size(); i++) {
-        std::cout << file.list[i].areaBox.position.y << " " << file.list[i].areaBox.size.y << " " << sf::Vector2<float>(sf::Mouse::getPosition(window)).y << std::endl;
         if (file.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
             return i;
     }
@@ -62,12 +62,12 @@ entry _draw_list_button(sf::Vector2f pos, sf::Vector2f size, entry file, sf::Ren
         else box.setFillColor(sf::Color(30, 30, 30));
     }
 
-    sf::Text text(font);
+    sf::Text text(font_listFile);
     text.setPosition(pos);
-    text.setFont(font);
+    text.setFont(font_listFile);
     text.setCharacterSize(16);
     text.setFillColor(sf::Color::White);
-    text.setString(file.path.string());
+    text.setString(file.name);
 
     button.box = box;
     button.areaBox = areaBox;
@@ -96,18 +96,25 @@ void _print_list(std::vector<entry> list) {
 fileWindow _update_window(fs::path newPath) {
     fileWindow window;
     window.currentPath = newPath;
+
+    if (newPath.has_relative_path()) {
+        entry backButton;
+        backButton.path = newPath.parent_path();
+        //std::cout << backButton.path << std::endl;
+        backButton.selected = false;
+        backButton.name = "[..]";
+        window.list.push_back(backButton);
+    }
+
     for (auto& e : fs::directory_iterator(newPath)) {
         entry temp;
         temp.path = e.path();
         temp.selected = false;
-        window.list.push_back({ .path = temp.path, .selected = false });
-        //_get_creation_time(e.path());
+        temp.name = e.path().filename().string();
+        window.list.push_back(temp);
     }
-
     return window;
 }
-
-
 
 // Posibil sa nu trebuiasca: atunci cand se da click, ar veni o simpla atribuire pentru variabila current
 
@@ -159,7 +166,7 @@ void _command_open(fileWindow& window, int index) {
     if (index >= 0) {
         std::cout << window.list[index].path << std::endl;
         if (is_directory(window.list[index].path)) {
-            std::cout << "Opening..." << std::endl;
+            std::cout << "Opening " << window.list[index].path << std::endl;
             window = _update_window(window.list[index].path);
         }
         else { // Automatically find a matching app to open the given file
@@ -267,8 +274,8 @@ int main()
     std::string input;
 
     current = 0;
-    filewindow[0] = _update_window("C:");
-    filewindow[1] = _update_window("C:");
+    filewindow[0] = _update_window("C:\\");
+    filewindow[1] = _update_window("C:\\");
 
     //SYSTEMTIME t = _get_creation_time(filewindow[0].currentPath);
     //_print_path(window[0].currentPath);
@@ -282,12 +289,23 @@ int main()
     {
         window.clear();
 
-        filewindow[current] = _update_window(filewindow[current].currentPath);
-        filewindow[1-current] = _update_window(filewindow[1-current].currentPath);
+        filewindow[0] = _update_window(filewindow[0].currentPath);
+        filewindow[1] = _update_window(filewindow[1].currentPath);
 
-        for (int i=0;i<filewindow[current].list.size();i++) {
-            filewindow[current].list[i] = _draw_list_button(sf::Vector2f(0, i*25), sf::Vector2f(150, 20), filewindow[current].list[i], window);
-        }
+        if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + 10) current = 1;
+        else current = 0;
+
+        sf::RectangleShape line;
+        line.setSize(sf::Vector2f(5, window.getSize().y));
+        line.setPosition(sf::Vector2f(window.getSize().x / 2, 0));
+        line.setFillColor(sf::Color::White);
+
+        window.draw(line);
+
+        for (int i=0;i<filewindow[0].list.size();i++)
+            filewindow[0].list[i] = _draw_list_button(sf::Vector2f(0, i*25), sf::Vector2f(150, 20), filewindow[0].list[i], window);
+        for (int i=0;i<filewindow[1].list.size();i++)
+            filewindow[1].list[i] = _draw_list_button(sf::Vector2f(window.getSize().x / 2 + 10, i*25), sf::Vector2f(150, 20), filewindow[1].list[i], window);
 
         while (const std::optional event = window.pollEvent()) // event-uri/actiuni din sisteme periferice
         {
@@ -300,7 +318,8 @@ int main()
             }
             if (event->is<sf::Event::MouseButtonPressed>()) {
                 if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
-                    _command_open(filewindow[current], _get_hovered_over_button(filewindow[current], window));
+                    _print_list(filewindow[0].list);
+                    _command_open(filewindow[current], _get_hovered_over_list_button(filewindow[current], window));
                 }
             }
         }
