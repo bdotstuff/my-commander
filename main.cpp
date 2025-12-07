@@ -4,14 +4,13 @@
 #include <windows.h>
 #include <vector>
 #include <algorithm> //pentru count_if si find_if in functia _command_rename()
+#include <stack>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/System.hpp>
 
 namespace fs = std::filesystem;
 
-
-// Nici nu ne trebuie index, putem sa facem window[current].list[index] (vezi putin mai jos)
 struct entry {
     fs::path path;
     bool selected;
@@ -25,16 +24,12 @@ int current;
 
 // Pentru a copia/muta entry-urile selectate dintr-o lista in alta, trebuie sa stim path-ul directorului corespunzator listei destinatie. Asadar, am grupat intr-un struct lista impreuna cu aceasta informatie
 // Asadar, variabila current va face alegerea intre window-uri, nu intre liste.
-// !Ar trebui sa ne decidem la un nume mai bun pentru acest struct, libraria grafica va avea cel mai probabil si ea o variabila cu un nume window...
-
-// alternativ o denumesti incepand cu litera mica, in general variabilele la librariile astea grafice au litera mare
-// -- redenumit to fileWindow (self explanatory. fereastra in care afisezi fisiere)
 
 struct fileWindow {
     fs::path currentPath;
     std::vector<entry> list;
     std::string orderType;
-} filewindow[2];
+} filewindow[2], historywindow[2];
 
 sf::Font font_listFile("D:\\MyCommander\\cmake-build-debug\\bin\\assets\\utfont.ttf");
 
@@ -79,6 +74,80 @@ entry _draw_list_button(sf::Vector2f pos, sf::Vector2f size, entry file, sf::Ren
     window.draw(text);
 
     return button;
+}
+
+fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::RenderWindow &window) {
+    entry button;
+    float additional_x_position;
+    fileWindow history;
+    while (file.currentPath.has_relative_path()) { // getting each directory
+        entry temp;
+        temp.path = file.currentPath;
+        temp.selected = false;
+        temp.name = file.currentPath.filename().string();
+        history.list.push_back(temp);
+        file.currentPath = file.currentPath.parent_path();
+    }
+    // getting the root drive
+    entry temp;
+    temp.path = file.currentPath.root_path();
+    temp.selected = false;
+    temp.name = file.currentPath.root_name().string();
+    history.list.push_back(temp);
+
+    while (history.list.size() > 0) { // calculating how many paths can be displayed (for auto-resize)
+        additional_x_position = 0;
+        for (int j=0; j < history.list.size(); j++) {
+            sf::Text text(font_listFile);
+            text.setString(history.list[j].path.filename().string());
+            text.setCharacterSize(16);
+            additional_x_position += 6 + text.getGlobalBounds().size.x;
+            text.setString(">");
+            additional_x_position += text.getGlobalBounds().size.x;
+        }
+        if (additional_x_position >= window.getSize().x / 2) {
+            history.list.pop_back();
+        }
+        else break;
+    }
+
+    additional_x_position = 0;
+    for (int i = history.list.size() - 1; i >= 0; i--) { // drawing the directories in their actual order (history contains them last to first)
+        sf::Text text(font_listFile);
+        text.setString(history.list[i].name);
+
+        sf::Rect<float> areaBox(pos + sf::Vector2<float>(additional_x_position, 0), text.getGlobalBounds().size + sf::Vector2f(4, 0));
+        history.list[i].areaBox = areaBox;
+
+        sf::RectangleShape box;
+        box.setPosition(pos + sf::Vector2<float>(additional_x_position, 0));
+        box.setSize(text.getGlobalBounds().size + sf::Vector2f(4, 0));
+
+        if (history.list[i].selected == true) box.setFillColor(sf::Color(160, 160, 160));
+        else {
+            if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
+                box.setFillColor(sf::Color(70, 70, 70));
+            }
+            else box.setFillColor(sf::Color(30, 30, 30));
+        }
+
+        history.list[i].box = box;
+
+        additional_x_position += 2;
+        text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
+        text.setCharacterSize(16);
+        window.draw(text);
+        additional_x_position += 2 + text.getGlobalBounds().size.x;
+
+        if (i > 0) {
+            text.setString(">");
+            text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
+            text.setCharacterSize(16);
+            window.draw(text);
+            additional_x_position += 2 + text.getGlobalBounds().size.x;
+        }
+    }
+    return history;
 }
 
 // Functii ajutatoare, nu le modific momentan
@@ -136,7 +205,6 @@ fileWindow _update_window(fs::path newPath, std::string sortingType) {
     }
     if (sortingType == "DIR_FIRST") // directoare, apoi fisiere normale
     {
-        std::cout << "sort by directory first" << std::endl;
         for (auto& e : fs::directory_iterator(newPath)) {
             if (std::filesystem::is_directory(e.path())) {
                 entry temp;
@@ -207,6 +275,7 @@ fileWindow _update_window(fs::path newPath, std::string sortingType) {
 // De asemenea, am dat index ul ca parametru in loc de path, ramane sa discutam cum e mai bine
 
 // am impresia ca prin click oricum va trebui sa iteram prin fiecare element pt a vedea care ii selectat... ambele merg, index pare mai intuitiv
+// edit: ar trebui rescrisa cu path lol
 void _command_open(fileWindow& window, int index) {
     std::cout << "Entered open command!" << std::endl;
     if (index >= 0) {
@@ -217,6 +286,18 @@ void _command_open(fileWindow& window, int index) {
         }
         else { // Automatically find a matching app to open the given file
             ShellExecute(NULL, "open", window.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
+        }
+    }
+}
+
+void _command_open_from_history_bar(fileWindow& window, fileWindow history, int index) {
+    if (index >= 0) {
+        if (is_directory(history.list[index].path)) {
+            std::cout << "Opening " << history.list[index].path << std::endl;
+            window = _update_window(history.list[index].path, window.orderType);
+        }
+        else { // Automatically find a matching app to open the given file
+            ShellExecute(NULL, "open", history.list[index].path.string().c_str(), NULL, NULL, SW_SHOW);
         }
     }
 }
@@ -341,6 +422,9 @@ int main()
         filewindow[0] = _update_window(filewindow[0].currentPath, filewindow[0].orderType);
         filewindow[1] = _update_window(filewindow[1].currentPath, filewindow[1].orderType);
 
+        historywindow[0] = _draw_list_history_button(sf::Vector2f(0, 0), filewindow[0], window);
+        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2 + 10, 0), filewindow[1], window);
+
         if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + 10) current = 1;
         else current = 0;
 
@@ -352,9 +436,9 @@ int main()
         window.draw(line);
 
         for (int i=0;i<filewindow[0].list.size();i++)
-            filewindow[0].list[i] = _draw_list_button(sf::Vector2f(0, i*25), sf::Vector2f(150, 20), filewindow[0].list[i], window);
+            filewindow[0].list[i] = _draw_list_button(sf::Vector2f(0, 50 + i*25), sf::Vector2f(150, 20), filewindow[0].list[i], window);
         for (int i=0;i<filewindow[1].list.size();i++)
-            filewindow[1].list[i] = _draw_list_button(sf::Vector2f(window.getSize().x / 2 + 10, i*25), sf::Vector2f(150, 20), filewindow[1].list[i], window);
+            filewindow[1].list[i] = _draw_list_button(sf::Vector2f(window.getSize().x / 2 + 10, 50 + i*25), sf::Vector2f(150, 20), filewindow[1].list[i], window);
 
         while (const std::optional event = window.pollEvent()) // event-uri/actiuni din sisteme periferice
         {
@@ -369,6 +453,7 @@ int main()
                 if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
                     _print_list(filewindow[0].list);
                     _command_open(filewindow[current], _get_hovered_over_list_button(filewindow[current], window));
+                    _command_open_from_history_bar(filewindow[current], historywindow[current], _get_hovered_over_list_button(historywindow[current], window));
                 }
             }
         }
