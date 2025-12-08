@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 #define POS_OFFSET         25
 //#define BOX_WIDTH         150 // asta e ajustabila in functie de alte tabele stanga/dreapta + resize, ar trebui calculata manual
 #define BOX_HEIGHT         20
-#define PADDING_LEFT        0
+#define PADDING_LEFT        5
 #define PADDING_TOP        50
 #define LINE_PADDING       10
 
@@ -68,7 +68,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             sf::RectangleShape box;
             box.setPosition(pos);
             box.setSize(size);
-            box.setFillColor(sf::Color::Black);
+            box.setFillColor(sf::Color(0, 0, 0, 0));
             box.setOutlineThickness(2);
             sf::Rect<float> areaBox(pos, size);
             if (filewindow[side].list[i].selected == true) box.setOutlineColor(sf::Color(160, 160, 160));
@@ -76,9 +76,10 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
                 if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
                     box.setOutlineColor(sf::Color(70, 70, 70));
                 }
-                else box.setOutlineColor(sf::Color(0, 0, 0));
+                else box.setOutlineColor(sf::Color(0, 0, 0, 0));
             }
             text.setPosition(pos);
+            if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) text.setPosition(pos + sf::Vector2<float>(5, 0));
             text.setFont(font_listFile);
             text.setCharacterSize(16);
             text.setFillColor(sf::Color::White);
@@ -97,6 +98,23 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
 }
 
 fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::RenderWindow &window) {
+    //drawing background bar
+    sf::RectangleShape bgbar;
+    bgbar.setPosition(pos - sf::Vector2f(0, 500));
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 500));
+    window.draw(bgbar);
+
+    bgbar.setPosition(pos);
+    bgbar.setFillColor(sf::Color(58, 52, 74));
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
+    window.draw(bgbar);
+
+    bgbar.setPosition(pos + sf::Vector2f(0, 25));
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 5));
+    window.draw(bgbar);
+
     entry button;
     float additional_x_position;
     fileWindow history;
@@ -136,27 +154,30 @@ fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::Rend
     for (int i = history.list.size() - 1; i >= 0; i--) { // drawing the directories in their actual order (history contains them last to first)
         sf::Text text(font_listFile);
         text.setString(history.list[i].name);
+        text.setCharacterSize(16);
+        text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
 
-        sf::Rect<float> areaBox(pos + sf::Vector2<float>(additional_x_position, 0), text.getGlobalBounds().size + sf::Vector2f(4, 0));
+        sf::Rect<float> areaBox(pos + sf::Vector2<float>(additional_x_position, 4), text.getGlobalBounds().size);
         history.list[i].areaBox = areaBox;
 
         sf::RectangleShape box;
-        box.setPosition(pos + sf::Vector2<float>(additional_x_position, 0));
-        box.setSize(text.getGlobalBounds().size + sf::Vector2f(4, 0));
+        box.setPosition(pos + sf::Vector2<float>(additional_x_position, 20));
+        box.setSize(sf::Vector2f(text.getGlobalBounds().size.x, 0));
+        box.setFillColor(sf::Color(0, 0, 0, 0));
+        box.setOutlineThickness(1);
 
         if (history.list[i].selected == true) box.setOutlineColor(sf::Color(160, 160, 160));
         else {
             if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
-                box.setOutlineColor(sf::Color(70, 70, 70));
+                box.setOutlineColor(sf::Color(255, 255, 255));
             }
-            else box.setOutlineColor(sf::Color(0, 0, 0));
+            else box.setOutlineColor(sf::Color(0, 0, 0, 0));
         }
 
         history.list[i].box = box;
+        window.draw(box);
 
         additional_x_position += 2;
-        text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
-        text.setCharacterSize(16);
         window.draw(text);
         additional_x_position += 2 + text.getGlobalBounds().size.x;
 
@@ -313,10 +334,10 @@ int main()
 
     while (window.isOpen())
     {
-        window.clear();
+        window.clear(sf::Color(20, 23, 36));
 
-        historywindow[0] = _draw_list_history_button(sf::Vector2f(0, 0), filewindow[0], window);
-        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2 + 7, 0), filewindow[1], window);
+        historywindow[0] = _draw_list_history_button(sf::Vector2f(0, 10), filewindow[0], window);
+        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2 + 7, 10), filewindow[1], window);
 
         if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + LINE_PADDING) current = 1;
         else current = 0;
@@ -384,6 +405,7 @@ int main()
                     if(filewindow[current].scrollAmount > 0){
                         filewindow[current].scrollAmount = 0;
                     }
+                    std::cout << filewindow[current].scrollAmount << std::endl;
                     _draw_lists(filewindow, window);
                 }
             }
