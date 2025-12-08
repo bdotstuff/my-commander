@@ -189,7 +189,7 @@ void _update_window(fileWindow &window, fs::path newPath) {
         entry temp;
         temp.path = e.path();
         temp.selected = false;
-        window.list.push_back(temp);
+        if(!(GetFileAttributes(temp.path.string().c_str()) & FILE_ATTRIBUTE_HIDDEN)) window.list.push_back(temp);
     }
 
     // Sortare:
@@ -212,21 +212,14 @@ void _update_window(fileWindow &window, fs::path newPath) {
             std::sort(first, last, [](entry a, entry b){
                 return a.path.extension() > b.path.extension();
             });
+            break;
         };
         case SORT_SIZE:{
             // Aici trebuie sa fac SORT_DIR_FIRST, vreau nu vreau. probabil ar trebui sa mut bucata asta de cod in afara switch-ului
             std::sort(first, last, [](entry a, entry b){
-                if(fs::is_directory(a.path) && !fs::is_directory(b.path)){
-                    return true;
-                }
-                else if(!fs::is_directory(a.path) && fs::is_directory(b.path)){
-                    return false;
-                }
-                else if(fs::is_directory(a.path) && fs::is_directory(b.path)){
-                    return true;
-                }
-                else return fs::file_size(a.path) > fs::file_size(b.path);
+                return !fs::is_directory(a.path) && !fs::is_directory(b.path) && fs::file_size(a.path) > fs::file_size(b.path);
             });
+            break;
         };
 
         // 0 - ascending
@@ -362,20 +355,17 @@ int main()
             if(event->is<sf::Event::KeyPressed>()){
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
                     filewindow[current].sort = SORT_NAME;
-                    _update_window(filewindow[current], filewindow[current].currentPath);
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
                     filewindow[current].sort = SORT_DATE;
-                    _update_window(filewindow[current], filewindow[current].currentPath);
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
                     filewindow[current].sort = SORT_TYPE;
-                    _update_window(filewindow[current], filewindow[current].currentPath);
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
                     filewindow[current].sort = SORT_SIZE;
-                    _update_window(filewindow[current], filewindow[current].currentPath);
                 }
+                _update_window(filewindow[current], filewindow[current].currentPath);
             }
             // I hate sfml3 events AAAAHHH
             if (auto *mousewheelscrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
