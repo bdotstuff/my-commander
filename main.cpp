@@ -11,13 +11,15 @@
 namespace fs = std::filesystem;
 
 // Definim aici constante, simplifica foarte mult modificarea acestora in mai multe parti ale codului, si sunt mai usor de gasit
-#define POS_OFFSET          25
-//#define BOX_WIDTH         150 // asta e ajustabila in functie de alte tabele stanga/dreapta + resize, ar trebui calculata manual
-#define BOX_HEIGHT          20
-#define PADDING_LEFT        10
-#define PADDING_TOP         90
-#define PADDING_TOP_HISTORY 40
-#define LINE_PADDING        0
+#define POS_OFFSET         25
+#define BOX_HEIGHT         20
+#define PADDING_LEFT       10
+#define PADDING_TOP        60
+#define LINE_PADDING        5
+#define SCROLLBAR_WIDTH    15
+#define THUMB_MIN_HEIGHT   50
+#define LINE_WIDTH          5
+#define ICON_SIZE          16
 
 // Mult mai ok decat un string, mai eficient in spatiu de memorie si in comparare (un simplu switch)
 enum sortingType{
@@ -26,10 +28,6 @@ enum sortingType{
     SORT_TYPE,
     SORT_SIZE,
 };
-
-std::chrono::steady_clock::time_point currentClickTime;
-std::chrono::steady_clock::time_point lastClickTime;
-const int doubleClickThreshold = 500;
 
 struct entry {
     fs::path path;
@@ -45,67 +43,74 @@ struct fileWindow {
     fs::path currentPath;
     std::vector<entry> list;
     sortingType sort;
-    int sortOrder; //ascending sau descending. Scapam de mult duplicate code. Ma gandesc ca cand se face click pe un buton de sortare, se face toggle intre valorile acestui camp
+    int sortOrder; //ascending sau descending.
     float scrollAmount; // Offset-ul pozitiei butoanelor atunci cand dai scroll
 } filewindow[2], historywindow[2];
 
+struct scrollBar{
+   sf::Rect<float> track;
+   sf::Rect<float> thumb = {{0,0},{0,0}};
+} scrollbar[2];
+
+sf::Font font_listFile("utfont.ttf");
+sf::Texture texture_cmdIconPlaceholder;
+sf::Texture texture_dirIcon;
+sf::Texture texture_regularIcon;
+sf::Texture texture_backIcon;
+
+void _draw_scrollbars(fileWindow filewindow[2], scrollBar scrollbar[2], sf::RenderWindow &window){
+    sf::RectangleShape box;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    // Track:
+    for(int side=0;side<2;side++){
+        pos = {(side*window.getSize().x/2)+window.getSize().x/2-SCROLLBAR_WIDTH-(float)(1-side)*LINE_WIDTH/2-side*2, PADDING_TOP};
+        size = {SCROLLBAR_WIDTH, window.getSize().y-(float)PADDING_TOP};
+        sf::Rect<float> areaBox(pos, size);
+        box.setPosition(pos);
+        box.setSize(size);
+        scrollbar[side].track = areaBox;
+        box.setFillColor(sf::Color(200, 200, 200));
+        window.draw(box);
+    }
+    // Thumb:
+    for(int side=0;side<2;side++){
+        pos = {(side*window.getSize().x/2)+window.getSize().x/2-SCROLLBAR_WIDTH-(float)(1-side)*LINE_WIDTH/2-side*2, scrollbar[side].thumb.position.y};
+        if(filewindow[side].list.size()*POS_OFFSET-scrollbar[side].track.size.y <= 0){
+            size = {SCROLLBAR_WIDTH, scrollbar[side].track.size.y};
+        }
+        else size = {SCROLLBAR_WIDTH, THUMB_MIN_HEIGHT};
+        sf::Rect<float> areaBox(pos, size);
+        box.setPosition(pos);
+        box.setSize(size);
+        box.setFillColor(sf::Color(70, 70, 70));
+        scrollbar[side].thumb = areaBox;
+        window.draw(box);
+    }
+}
+
+void _thumb_from_scroll(fileWindow filewindow, scrollBar &scrollbar){
+    scrollbar.thumb.position.y = PADDING_TOP+(scrollbar.track.size.y - scrollbar.thumb.size.y)/(((filewindow.list.size()*POS_OFFSET-scrollbar.track.size.y)/POS_OFFSET))*((-filewindow.scrollAmount)/POS_OFFSET);
+}
+void _scroll_from_thumb(fileWindow &filewindow, scrollBar &scrollbar, sf::RenderWindow &window){
+    if(sf::Mouse::getPosition(window).y > scrollbar.track.position.y + scrollbar.track.size.y - scrollbar.thumb.size.y){
+        scrollbar.thumb.position.y = scrollbar.track.position.y + scrollbar.track.size.y - scrollbar.thumb.size.y;
+    }
+    else scrollbar.thumb.position.y = sf::Mouse::getPosition(window).y;
+    if(filewindow.list.size()*POS_OFFSET-scrollbar.track.size.y > 0){
+        filewindow.scrollAmount = -((scrollbar.thumb.position.y)*(((filewindow.list.size()*POS_OFFSET-scrollbar.track.size.y)/POS_OFFSET)/(scrollbar.track.size.y - scrollbar.thumb.size.y))*POS_OFFSET);
+    }
+}
+
 // Este mai bine path in loc de index. Asa putem folosi aceeasi functie si pentru filewindow, cat si pentru historywindow
 // De obs totusi ca conteaza ordinea in care se apeleaza functia
-fs::path _get_hover_path(fileWindow filewindow, sf::RenderWindow &window) {
+fs::path _get_hover_path(fileWindow filewindow, sf::RenderWindow &window, int side) {
     for (int i = 0; i < filewindow.list.size(); i++) {
         if (filewindow.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
             return filewindow.list[i].path;
     }
     return filewindow.currentPath;
 }
-
-int _get_hover_path_index(fileWindow filewindow, sf::RenderWindow &window, int side) {
-    for (int i = 0; i < filewindow.list.size(); i++) {
-        if (filewindow.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
-            return i;
-    }
-    return -1;
-}
-
-void _draw_ui(sf::RenderWindow &window) {
-    //drawing background bar
-    sf::RectangleShape bgbar;
-    bgbar.setPosition(-sf::Vector2f(0, 420)); // border top
-    bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(window.getSize().x, 500));
-    window.draw(bgbar);
-
-    bgbar.setPosition(sf::Vector2f(0, 50)); // history bar bg
-    bgbar.setFillColor(sf::Color(58, 52, 74));
-    bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
-    window.draw(bgbar);
-
-    bgbar.setPosition(sf::Vector2f(0, 0)); // border left
-    bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(2, window.getSize().y));
-    window.draw(bgbar);
-
-    bgbar.setPosition(sf::Vector2f(window.getSize().x - 2, 0)); // border right
-    bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(2, window.getSize().y));
-    window.draw(bgbar);
-
-    bgbar.setSize(sf::Vector2f(5, window.getSize().y)); // middle split
-    bgbar.setPosition(sf::Vector2f(window.getSize().x / 2 - 2.5, 0));
-    bgbar.setFillColor(sf::Color::White);
-    window.draw(bgbar);
-
-    bgbar.setPosition(sf::Vector2f(0, 20)); // top split (icons/shortcuts, whatever was there)
-    bgbar.setFillColor(sf::Color(58, 52, 74));
-    bgbar.setSize(sf::Vector2f(window.getSize().x, 1));
-    window.draw(bgbar);
-}
-
-sf::Font font_listFile("utfont.ttf");
-fs::path cmdIconPlaceholder = "cmdIconPlaceholder.png";
-fs::path dirIcon = "dirIcon.png";
-fs::path regularIcon = "regularFile.png";
-fs::path backIcon = "backIcon.png";
 
 // Doar actualizam partial fiecare filewindow, nu e nevoie de variabile temporare, etc.
 void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
@@ -114,45 +119,47 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
     sf::Vector2f size;
     for(int side=0;side<2;side++){
         for(int i=0;i<filewindow[side].list.size();i++){
-            pos = {(float)PADDING_LEFT+side*((window.getSize().x)/2+LINE_PADDING), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP};
-            size = {(float)(window.getSize().x)/2 - 40, BOX_HEIGHT};
-
-            sf::Texture texture;
-            if (filewindow[side].list[i].path == filewindow[side].currentPath.parent_path()) texture.loadFromFile(backIcon);
-            else if (is_directory(filewindow[side].list[i].path)) texture.loadFromFile(dirIcon);
-            else texture.loadFromFile(regularIcon);
-            sf::Sprite iconSprite(texture);
-            iconSprite.setPosition(pos + sf::Vector2f(0, 3));
-
-            pos += sf::Vector2f(20, 0);
-            size -= sf::Vector2f(20, 0);
-
+            pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((window.getSize().x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP+PADDING_LEFT};
+            size = {(float)(window.getSize().x)/2 - SCROLLBAR_WIDTH-ICON_SIZE-PADDING_LEFT*3, BOX_HEIGHT};
             sf::RectangleShape box;
             box.setPosition(pos);
             box.setSize(size);
-            box.setFillColor(sf::Color(0, 0, 0, 0));
+            box.setFillColor(sf::Color::Transparent);
             box.setOutlineThickness(2);
             sf::Rect<float> areaBox(pos, size);
-            if (filewindow[side].list[i].selected == true) box.setOutlineColor(sf::Color(160, 160, 160));
-            else {
-                if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
-                    box.setOutlineColor(sf::Color(70, 70, 70));
-                }
-                else box.setOutlineColor(sf::Color(0, 0, 0, 0));
-            }
             text.setPosition(pos);
-            if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))) or filewindow[side].list[i].selected == true)
-                text.setPosition(pos + sf::Vector2<float>(5, 0));
             text.setFont(font_listFile);
             text.setCharacterSize(16);
             text.setFillColor(sf::Color::White);
             text.setString(filewindow[side].list[i].name);
+            if (filewindow[side].list[i].selected == true) box.setOutlineColor(sf::Color(160, 160, 160));
+            else {
+                if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
+                    text.setPosition({pos.x+PADDING_LEFT, pos.y});
+                    box.setOutlineColor(sf::Color(70, 70, 70));
+                }
+                else box.setOutlineColor(sf::Color::Transparent);
+            }
 
             // Nu se deseneaza peste historywindow
             if(pos.y >= PADDING_TOP){
                 window.draw(box);
                 window.draw(text);
-                window.draw(iconSprite);
+                if(i == 0 && filewindow[side].list[i].path == filewindow[side].currentPath.parent_path()){
+                    sf::Sprite iconSprite(texture_backIcon);
+                    iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
+                    window.draw(iconSprite);
+                }
+                else if(is_directory(filewindow[side].list[i].path)){
+                    sf::Sprite iconSprite(texture_dirIcon);
+                    iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
+                    window.draw(iconSprite);
+                }
+                else{
+                    sf::Sprite iconSprite(texture_regularIcon);
+                    iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
+                    window.draw(iconSprite);
+                }
 
                 filewindow[side].list[i].box = box;
                 filewindow[side].list[i].areaBox = areaBox;
@@ -202,13 +209,13 @@ fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::Rend
         sf::Text text(font_listFile);
         text.setString(history.list[i].name);
         text.setCharacterSize(16);
-        text.setPosition(pos + sf::Vector2f(additional_x_position, PADDING_TOP_HISTORY));
+        text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
 
-        sf::Rect<float> areaBox(pos + sf::Vector2<float>(additional_x_position, PADDING_TOP_HISTORY + 4), text.getGlobalBounds().size);
+        sf::Rect<float> areaBox(pos + sf::Vector2<float>(additional_x_position, 4), text.getGlobalBounds().size);
         history.list[i].areaBox = areaBox;
 
         sf::RectangleShape box;
-        box.setPosition(pos + sf::Vector2<float>(additional_x_position, PADDING_TOP_HISTORY + 20));
+        box.setPosition(pos + sf::Vector2<float>(additional_x_position, 20));
         box.setSize(sf::Vector2f(text.getGlobalBounds().size.x, 0));
         box.setFillColor(sf::Color(0, 0, 0, 0));
         box.setOutlineThickness(1);
@@ -230,7 +237,7 @@ fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::Rend
 
         if (i > 0) {
             text.setString(">");
-            text.setPosition(pos + sf::Vector2f(additional_x_position, PADDING_TOP_HISTORY));
+            text.setPosition(pos + sf::Vector2f(additional_x_position, 0));
             text.setCharacterSize(16);
             window.draw(text);
             additional_x_position += 2 + text.getGlobalBounds().size.x;
@@ -256,19 +263,26 @@ void _update_window(fileWindow &window, fs::path newPath) {
     window.list.clear();
     window.currentPath = newPath;
 
-    if (newPath != newPath.root_path())
-        window.list.push_back({.path = newPath.parent_path(), .selected = false, .name = "[..]"});
-
-    fs::path texPath;
-    for (auto e : fs::directory_iterator(newPath)) {
-        if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN))
-            window.list.push_back({.path = e.path(), .selected = false, .name = e.path().filename().string()});
+    // Primul element e Parent Directory
+    if(newPath.root_path() != newPath){
+        entry temp;
+        temp.path = newPath.parent_path();
+        temp.selected = false;
+        temp.name = "..";
+        window.list.push_back(temp);
     }
 
+    for (auto e : fs::directory_iterator(newPath))
+        if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN)){
+            entry temp;
+            temp.path = e.path();
+            temp.selected = false;
+            temp.name = e.path().filename().string();
+            window.list.push_back(temp);
+        }
 
     // Sortare:
     auto first = window.list.begin();
-    if (newPath != newPath.root_path()) first = window.list.begin() + 1;
     auto last = window.list.end();
     switch(window.sort){
         case SORT_NAME:{
@@ -307,16 +321,13 @@ void _update_window(fileWindow &window, fs::path newPath) {
 
 // Acum deschidem cu un path. Acelasi motiv ca la _get_hover_path
 void _command_open(fileWindow& window, fs::path p) {
-    std::cout << "Entered open command!" << std::endl;
     if (window.currentPath != p) {
         if (fs::is_directory(p)) {
-            std::cout << "Opening " << p << std::endl;
             window.scrollAmount = 0;
             _update_window(window, p);
         }
         else { // Automatically find a matching app to open the given file
 
-            std::cout << p << std::endl;
             ShellExecute(NULL, "open", p.string().c_str(), NULL, NULL, SW_SHOW);
         }
     }
@@ -370,14 +381,51 @@ void _command_rename(fileWindow& window, fs::path newName) {
     }
     else {
         auto selectedEntry = find_if(first, last, is_selected); // entry-ul care are .selected = true
-        rename(selectedEntry->path, selectedEntry->path.parent_path() / newName); // merge si window.currentPath / newName
+        rename(selectedEntry->path, selectedEntry->path.parent_path() / newName);
     }
     _update_window(window, window.currentPath);
 }
 
+void _draw_ui(sf::RenderWindow &window){
+    sf::RectangleShape bgbar;
+    bgbar.setPosition(sf::Vector2f(0, 0)); // border top
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 60));
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(0, 30)); // history bar bg
+    bgbar.setFillColor(sf::Color(58, 52, 74));
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(0, 0)); // border left
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(2, window.getSize().y));
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(window.getSize().x - 2, 0)); // border right
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(2, window.getSize().y));
+    window.draw(bgbar);
+
+    bgbar.setSize(sf::Vector2f(5, window.getSize().y)); // middle split
+    bgbar.setPosition(sf::Vector2f(window.getSize().x / 2 - 2.5, 0));
+    bgbar.setFillColor(sf::Color::White);
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(0, 0)); // top split (icons/shortcuts, whatever was there)
+    bgbar.setFillColor(sf::Color(200, 200, 200));
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
+    window.draw(bgbar);
+}
+
 int main()
 {
-    std::string input;
+    if(!texture_cmdIconPlaceholder.loadFromFile("cmdIconPlaceholder.png") ||
+       !texture_dirIcon.loadFromFile("dirIcon.png") ||
+       !texture_regularIcon.loadFromFile("regularFile.png") ||
+       !texture_backIcon.loadFromFile("backIcon.png")
+       ) return -1;
 
     current = 0;
     _update_window(filewindow[0], fs::current_path());
@@ -386,19 +434,21 @@ int main()
     sf::RenderWindow window;
     window.create(sf::VideoMode({ 800, 600 }), "My window");
 
+    _thumb_from_scroll(filewindow[0], scrollbar[0]);
+    _thumb_from_scroll(filewindow[1], scrollbar[1]);
+        _draw_lists(filewindow, window);
     while (window.isOpen())
     {
         window.clear(sf::Color(20, 23, 36));
-
         _draw_ui(window);
 
-        historywindow[0] = _draw_list_history_button(sf::Vector2f(0, 10), filewindow[0], window);
-        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2, 10), filewindow[1], window);
+        historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], window);
+        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], window);
 
         if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + LINE_PADDING) current = 1;
         else current = 0;
-
         _draw_lists(filewindow, window);
+        _draw_scrollbars(filewindow, scrollbar, window);
 
         while (std::optional event = window.pollEvent()) // event-uri/actiuni din sisteme periferice
         {
@@ -409,47 +459,49 @@ int main()
                 sf::FloatRect visibleArea({0.f, 0.f}, sf::Vector2f(resized->size));
                 window.setView(sf::View(visibleArea));
             }
-            if (event->is<sf::Event::MouseButtonPressed>()) {
-                if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
-                    _print_list(filewindow[0].list);
-
-                    _command_open(filewindow[current], _get_hover_path(historywindow[current], window)); // do this first, otherwise there's conflicts on double click
-
-                    currentClickTime = std::chrono::steady_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentClickTime - lastClickTime).count();
-                    lastClickTime = std::chrono::steady_clock::now();
-                    if (duration < doubleClickThreshold) // Open ONLY if double clicked
-                    {
-                        std::cout << "dblclck" << std::endl;
-                        _print_list(filewindow[current].list);
-                        if (filewindow[current].list[_get_hover_path_index(filewindow[current], window, current)].selected == true)
-                            _command_open(filewindow[current], _get_hover_path(filewindow[current], window));
-                    }
-
-                    for (int i = 0; i < filewindow[current].list.size(); i++) _command_deselect(filewindow[current], i);
-                    for (int i = 0; i < filewindow[1-current].list.size(); i++) _command_deselect(filewindow[1-current], i); // clears all selection
-
-                    _command_select(filewindow[current], _get_hover_path_index(filewindow[current], window, current)); // selecting
+            if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+                sf::Vector2<float> mousePos = (sf::Vector2<float>)sf::Mouse::getPosition(window);
+                if(mousePos.y >= scrollbar[current].track.position.y && mousePos.y <= scrollbar[current].track.position.y+scrollbar[current].track.size.y){
+                    scrollbar[current].thumb.position.y = scrollbar[current].track.position.y;
+                    _scroll_from_thumb(filewindow[current], scrollbar[current], window);
+                    _draw_scrollbars(filewindow, scrollbar, window);
                 }
+            }
+            if (event->is<sf::Event::MouseButtonPressed>()) {
+                    {
+                        _command_open(filewindow[current], _get_hover_path(historywindow[current], window, current));
+                        _command_open(filewindow[current], _get_hover_path(filewindow[current], window, current));
+
+                        filewindow[current].scrollAmount = 0;
+                        _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                        _draw_scrollbars(filewindow, scrollbar, window);
+                    }
             }
             if(event->is<sf::Event::KeyPressed>()){
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
                     _command_back(filewindow[current]);
+                    filewindow[current].scrollAmount = 0;
+                    _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                    _draw_scrollbars(filewindow, scrollbar, window);
                 }
             }
             // Testare sortari. In viitor le vom pune pe butoane
             if(event->is<sf::Event::KeyPressed>()){
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
                     filewindow[current].sort = SORT_NAME;
+                    std::cout << "Sorted by name!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
                     filewindow[current].sort = SORT_DATE;
+                    std::cout << "Sorted by date!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
                     filewindow[current].sort = SORT_TYPE;
+                    std::cout << "Sorted by type!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
                     filewindow[current].sort = SORT_SIZE;
+                    std::cout << "Sorted by size!\n";
                 }
                 _update_window(filewindow[current], filewindow[current].currentPath);
             }
@@ -464,14 +516,13 @@ int main()
                     }
 
                     // Verifica sa nu mearga in afara
-                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < window.getSize().y){
-                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)window.getSize().y;
+                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < window.getSize().y-PADDING_TOP){
+                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)window.getSize().y-PADDING_TOP;
                     }
                     if(filewindow[current].scrollAmount > 0){
                         filewindow[current].scrollAmount = 0;
                     }
-                    std::cout << filewindow[current].scrollAmount << std::endl;
-                    _draw_lists(filewindow, window);
+                    _thumb_from_scroll(filewindow[current], scrollbar[current]);
                 }
             }
         }
