@@ -123,7 +123,6 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             else texture.loadFromFile(regularIcon);
             sf::Sprite iconSprite(texture);
             iconSprite.setPosition(pos + sf::Vector2f(0, 3));
-            window.draw(iconSprite);
 
             pos += sf::Vector2f(20, 0);
             size -= sf::Vector2f(20, 0);
@@ -153,6 +152,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             if(pos.y >= PADDING_TOP){
                 window.draw(box);
                 window.draw(text);
+                window.draw(iconSprite);
 
                 filewindow[side].list[i].box = box;
                 filewindow[side].list[i].areaBox = areaBox;
