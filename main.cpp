@@ -20,6 +20,7 @@ namespace fs = std::filesystem;
 #define THUMB_MIN_HEIGHT   50
 #define LINE_WIDTH          5
 #define ICON_SIZE          16
+#define DOUBLE_CLICK_TIME 500
 
 // Mult mai ok decat un string, mai eficient in spatiu de memorie si in comparare (un simplu switch)
 enum sortingType{
@@ -90,7 +91,7 @@ void _draw_scrollbars(fileWindow filewindow[2], scrollBar scrollbar[2], sf::Rend
 }
 
 void _thumb_from_scroll(fileWindow filewindow, scrollBar &scrollbar){
-    scrollbar.thumb.position.y = PADDING_TOP+(scrollbar.track.size.y - scrollbar.thumb.size.y)/(((filewindow.list.size()*POS_OFFSET-scrollbar.track.size.y)/POS_OFFSET))*((-filewindow.scrollAmount)/POS_OFFSET);
+    scrollbar.thumb.position.y = PADDING_TOP+(scrollbar.track.size.y - scrollbar.thumb.size.y)/(((filewindow.list.size()*POS_OFFSET-scrollbar.track.size.y+10)/POS_OFFSET))*((-filewindow.scrollAmount)/POS_OFFSET);
 }
 void _scroll_from_thumb(fileWindow &filewindow, scrollBar &scrollbar, sf::RenderWindow &window){
     if(sf::Mouse::getPosition(window).y > scrollbar.track.position.y + scrollbar.track.size.y - scrollbar.thumb.size.y){
@@ -104,12 +105,19 @@ void _scroll_from_thumb(fileWindow &filewindow, scrollBar &scrollbar, sf::Render
 
 // Este mai bine path in loc de index. Asa putem folosi aceeasi functie si pentru filewindow, cat si pentru historywindow
 // De obs totusi ca conteaza ordinea in care se apeleaza functia
-fs::path _get_hover_path(fileWindow filewindow, sf::RenderWindow &window, int side) {
+fs::path _get_hover_path(fileWindow filewindow, sf::RenderWindow &window) {
     for (int i = 0; i < filewindow.list.size(); i++) {
         if (filewindow.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
             return filewindow.list[i].path;
     }
     return filewindow.currentPath;
+}
+int _get_hover_index(fileWindow filewindow, sf::RenderWindow &window) {
+    for (int i = 0; i < filewindow.list.size(); i++) {
+        if (filewindow.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
+            return i;
+    }
+    return -1;
 }
 
 // Doar actualizam partial fiecare filewindow, nu e nevoie de variabile temporare, etc.
@@ -421,6 +429,8 @@ void _draw_ui(sf::RenderWindow &window){
 
 int main()
 {
+    bool scrollbarClicked = false;
+    sf::Clock clock;
     if(!texture_cmdIconPlaceholder.loadFromFile("cmdIconPlaceholder.png") ||
        !texture_dirIcon.loadFromFile("dirIcon.png") ||
        !texture_regularIcon.loadFromFile("regularFile.png") ||
@@ -459,7 +469,7 @@ int main()
                 sf::FloatRect visibleArea({0.f, 0.f}, sf::Vector2f(resized->size));
                 window.setView(sf::View(visibleArea));
             }
-            if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+            if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && scrollbarClicked == true) {
                 sf::Vector2<float> mousePos = (sf::Vector2<float>)sf::Mouse::getPosition(window);
                 if(mousePos.y >= scrollbar[current].track.position.y && mousePos.y <= scrollbar[current].track.position.y+scrollbar[current].track.size.y){
                     scrollbar[current].thumb.position.y = scrollbar[current].track.position.y;
@@ -467,15 +477,32 @@ int main()
                     _draw_scrollbars(filewindow, scrollbar, window);
                 }
             }
+            else scrollbarClicked = false;
             if (event->is<sf::Event::MouseButtonPressed>()) {
-                    {
-                        _command_open(filewindow[current], _get_hover_path(historywindow[current], window, current));
-                        _command_open(filewindow[current], _get_hover_path(filewindow[current], window, current));
-
-                        filewindow[current].scrollAmount = 0;
-                        _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                        _draw_scrollbars(filewindow, scrollbar, window);
+                if(scrollbar[current].track.contains((sf::Vector2<float>)sf::Mouse::getPosition(window))){
+                    scrollbarClicked = true;
+                }
+                _command_open(filewindow[current], _get_hover_path(historywindow[current], window));
+                if(_get_hover_index(filewindow[current], window) == -1){
+                    for(auto &e : filewindow[current].list){
+                        e.selected = false;
                     }
+                }
+                else if(filewindow[current].list[_get_hover_index(filewindow[current], window)].selected == false){
+                    for(auto &e : filewindow[current].list){
+                        e.selected = false;
+                    }
+                    _command_select(filewindow[current], _get_hover_index(filewindow[current], window));
+                    clock.restart();
+                }
+                else if(clock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_TIME){
+                    _command_open(filewindow[current], _get_hover_path(filewindow[current], window));
+                    filewindow[current].scrollAmount = 0;
+                    _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                    _draw_scrollbars(filewindow, scrollbar, window);
+                    clock.restart();
+                }
+                clock.restart();
             }
             if(event->is<sf::Event::KeyPressed>()){
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
@@ -516,8 +543,8 @@ int main()
                     }
 
                     // Verifica sa nu mearga in afara
-                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < window.getSize().y-PADDING_TOP){
-                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)window.getSize().y-PADDING_TOP;
+                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < window.getSize().y-PADDING_TOP-10){
+                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)window.getSize().y-PADDING_TOP-10;
                     }
                     if(filewindow[current].scrollAmount > 0){
                         filewindow[current].scrollAmount = 0;
