@@ -140,7 +140,10 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             text.setCharacterSize(16);
             text.setFillColor(sf::Color::White);
             text.setString(filewindow[side].list[i].name);
-            if (filewindow[side].list[i].selected == true) box.setOutlineColor(sf::Color(160, 160, 160));
+            if (filewindow[side].list[i].selected == true){
+                box.setOutlineColor(sf::Color(160, 160, 160));
+                text.setPosition({pos.x+PADDING_LEFT, pos.y});
+            }
             else {
                 if (areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))) {
                     text.setPosition({pos.x+PADDING_LEFT, pos.y});
