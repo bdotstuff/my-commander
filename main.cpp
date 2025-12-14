@@ -2,6 +2,7 @@
 #include <iostream>
 #include <filesystem>
 #include <windows.h>
+#include <conio.h>
 #include <vector>
 #include <algorithm>
 #include <SFML/Window.hpp>
@@ -14,7 +15,9 @@ namespace fs = std::filesystem;
 #define POS_OFFSET         25
 #define BOX_HEIGHT         20
 #define PADDING_LEFT       10
-#define PADDING_TOP        60
+#define PADDING_TOP        100
+#define PADDING_TOP_SRC    60
+#define PADDING_LEFT_SRC   90
 #define LINE_PADDING        5
 #define SCROLLBAR_WIDTH    15
 #define THUMB_MIN_HEIGHT   50
@@ -39,6 +42,7 @@ struct entry {
 };
 
 int current;
+bool capsOn = false;
 
 struct fileWindow {
     fs::path currentPath;
@@ -46,6 +50,9 @@ struct fileWindow {
     sortingType sort;
     int sortOrder; //ascending sau descending.
     float scrollAmount; // Offset-ul pozitiei butoanelor atunci cand dai scroll
+    bool isSearching;
+    bool midSearch;
+    std::string searchString;
 } filewindow[2], historywindow[2];
 
 struct scrollBar{
@@ -126,6 +133,13 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
     sf::Vector2f pos;
     sf::Vector2f size;
     for(int side=0;side<2;side++){
+
+        sf::Text searchText(font_listFile);
+        searchText.setCharacterSize(16);
+        searchText.setPosition(sf::Vector2f(PADDING_LEFT_SRC+side*window.getSize().x/2, PADDING_TOP_SRC));
+        searchText.setString(filewindow[side].searchString);
+        window.draw(searchText);
+
         for(int i=0;i<filewindow[side].list.size();i++){
             pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((window.getSize().x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP+PADDING_LEFT};
             size = {(float)(window.getSize().x)/2 - SCROLLBAR_WIDTH-ICON_SIZE-PADDING_LEFT*3, BOX_HEIGHT};
@@ -156,7 +170,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             if(pos.y >= PADDING_TOP){
                 window.draw(box);
                 window.draw(text);
-                if(i == 0 && filewindow[side].list[i].path == filewindow[side].currentPath.parent_path()){
+                if(i == 0 && (filewindow[side].list[i].path == filewindow[side].currentPath.parent_path() || filewindow[side].list[i].name == "..")){
                     sf::Sprite iconSprite(texture_backIcon);
                     iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
                     window.draw(iconSprite);
@@ -269,8 +283,13 @@ void _print_list(std::vector<entry> list) {
     }
 }
 
-// Este de asemenea void, deoarece actualizam, nu reinitializam
-void _update_window(fileWindow &window, fs::path newPath) {
+// am adaugat isNewWindow pt ca sa putem avea anumite actualizari care sa nu refaca complet lista
+// de exemplu, daca sortam o reface complet (verificat in keyispressed), dar nu are loc pentru orice tasta (daca apasam ctrl pentru multiselect trebuie sa retina selectia anterioara)
+void _update_window(fileWindow &window, fs::path newPath, bool isNewWindow) {
+    std::vector<entry> list;
+    int index = 0;
+    if (isNewWindow == false)
+        list = window.list;
     window.list.clear();
     window.currentPath = newPath;
 
@@ -278,7 +297,12 @@ void _update_window(fileWindow &window, fs::path newPath) {
     if(newPath.root_path() != newPath){
         entry temp;
         temp.path = newPath.parent_path();
-        temp.selected = false;
+        if (isNewWindow == false) {
+            std::cout << index << std::endl;
+            temp.selected = list[index].selected;
+            index ++;
+        }
+        else temp.selected = false;
         temp.name = "..";
         window.list.push_back(temp);
     }
@@ -287,13 +311,14 @@ void _update_window(fileWindow &window, fs::path newPath) {
         if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN)){
             entry temp;
             temp.path = e.path();
-            temp.selected = false;
+            if (isNewWindow == false) temp.selected = list[index].selected;
             temp.name = e.path().filename().string();
             window.list.push_back(temp);
         }
 
     // Sortare:
     auto first = window.list.begin();
+    if(newPath.root_path() != newPath) first = window.list.begin()+1;
     auto last = window.list.end();
     switch(window.sort){
         case SORT_NAME:{
@@ -330,12 +355,68 @@ void _update_window(fileWindow &window, fs::path newPath) {
     }
 }
 
+void _update_window_from_search(fileWindow &window) { // no newPath since it does not enter any directory, no isNewWindow since it always is a new window
+    window.midSearch = true;
+    window.list.clear();
+    entry tempinit;
+    tempinit.path = window.currentPath; // to return back to pre-search
+    tempinit.selected = false;
+    tempinit.name = "..";
+    window.list.push_back(tempinit);
+    std::cout << window.currentPath << " " << tempinit.path << "\n";
+    for (auto e : fs::recursive_directory_iterator(window.currentPath)) {
+        if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN) and e.path().stem().string().find(window.searchString) != std::string::npos) {
+            std::cout << window.searchString << " " << e.path().string() << "\n";
+            entry temp;
+            temp.path = e.path();
+            temp.selected = false;
+            temp.name = e.path().filename().string();
+            window.list.push_back(temp);
+        }
+    }
+    auto first = window.list.begin()+1;
+    auto last = window.list.end();
+    switch(window.sort) {
+        case SORT_NAME:{
+            // Sortarea asta e by default lol
+            // Totusi, ar trebui ca SORT_DIR_FIRST sa fie implicit (zic asta raportandu-ma la Explorer, vedem)
+            // Totusi nu implementez, in schimb implementez sortarile din Explorer.
+            break;
+        };
+        case SORT_DATE:{
+            std::sort(first, last, [](entry a, entry b){
+                return fs::last_write_time(a.path) > last_write_time(b.path);
+            });
+            break;
+        };
+        case SORT_TYPE:{
+            std::sort(first, last, [](entry a, entry b){
+                return a.path.extension() > b.path.extension();
+            });
+            break;
+        };
+        case SORT_SIZE:{
+            // Aici trebuie sa fac SORT_DIR_FIRST, vreau nu vreau. probabil ar trebui sa mut bucata asta de cod in afara switch-ului
+            std::sort(first, last, [](entry a, entry b){
+                return !fs::is_directory(a.path) && !fs::is_directory(b.path) && fs::file_size(a.path) > fs::file_size(b.path);
+            });
+            break;
+        };
+    }
+    // 0 - ascending
+    // 1 - descending
+    if(window.sortOrder == 1){
+        std::reverse(first, last);
+    }
+}
+
 // Acum deschidem cu un path. Acelasi motiv ca la _get_hover_path
 void _command_open(fileWindow& window, fs::path p) {
-    if (window.currentPath != p) {
+    if (window.currentPath != p or window.midSearch == true) {
+        window.midSearch = false;
         if (fs::is_directory(p)) {
             window.scrollAmount = 0;
-            _update_window(window, p);
+            _update_window(window, p, true);
         }
         else { // Automatically find a matching app to open the given file
 
@@ -345,7 +426,7 @@ void _command_open(fileWindow& window, fs::path p) {
 }
 
 void _command_back(fileWindow& window) {
-    _update_window(window, window.currentPath.parent_path());
+    _update_window(window, window.currentPath.parent_path(), true);
 }
 
 void _command_select(fileWindow& window, int index) {
@@ -361,7 +442,7 @@ void _command_copy(fileWindow source, fileWindow& dest) {
             copy(e.path, dest.currentPath);
         }
     }
-    _update_window(dest, dest.currentPath);
+    _update_window(dest, dest.currentPath, true);
 }
 
 void _command_move(fileWindow& source, fileWindow& dest) {
@@ -370,8 +451,8 @@ void _command_move(fileWindow& source, fileWindow& dest) {
             rename(e.path, dest.currentPath / e.path.filename());
         }
     }
-    _update_window(source, source.currentPath);
-    _update_window(dest, dest.currentPath);
+    _update_window(source, source.currentPath, true);
+    _update_window(dest, dest.currentPath, true);
 }
 void _command_delete(fileWindow& window) {
     for (auto e : window.list) {
@@ -379,7 +460,7 @@ void _command_delete(fileWindow& window) {
             remove(e.path);
         }
     }
-    _update_window(window, window.currentPath);
+    _update_window(window, window.currentPath, true);
 }
 
 // Momentan, redenumirea se face doar asupra unui singur fisier. Altfel, trebuie sa adaugam (nr) la finalul numelor fisierelor, deci verific daca doar un singur fisier e selectat.
@@ -394,19 +475,33 @@ void _command_rename(fileWindow& window, fs::path newName) {
         auto selectedEntry = find_if(first, last, is_selected); // entry-ul care are .selected = true
         rename(selectedEntry->path, selectedEntry->path.parent_path() / newName);
     }
-    _update_window(window, window.currentPath);
+    _update_window(window, window.currentPath, true);
 }
 
 void _draw_ui(sf::RenderWindow &window){
     sf::RectangleShape bgbar;
     bgbar.setPosition(sf::Vector2f(0, 0)); // border top
     bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(window.getSize().x, 60));
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 90));
     window.draw(bgbar);
 
     bgbar.setPosition(sf::Vector2f(0, 30)); // history bar bg
     bgbar.setFillColor(sf::Color(58, 52, 74));
     bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(0, 60)); // search bar thing
+    bgbar.setFillColor(sf::Color(58, 52, 74));
+    bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
+    window.draw(bgbar);
+
+    bgbar.setPosition(sf::Vector2f(0, 60)); // extra white before search
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(80, 25));
+    window.draw(bgbar);
+    bgbar.setPosition(sf::Vector2f(window.getSize().x / 2, 60));
+    bgbar.setFillColor(sf::Color::White);
+    bgbar.setSize(sf::Vector2f(80, 25));
     window.draw(bgbar);
 
     bgbar.setPosition(sf::Vector2f(0, 0)); // border left
@@ -441,15 +536,15 @@ int main()
        ) return -1;
 
     current = 0;
-    _update_window(filewindow[0], fs::current_path());
-    _update_window(filewindow[1], "C:\\");
+    _update_window(filewindow[0], fs::current_path(), true);
+    _update_window(filewindow[1], "C:\\", true);
 
     sf::RenderWindow window;
     window.create(sf::VideoMode({ 800, 600 }), "My window");
 
     _thumb_from_scroll(filewindow[0], scrollbar[0]);
     _thumb_from_scroll(filewindow[1], scrollbar[1]);
-        _draw_lists(filewindow, window);
+    _draw_lists(filewindow, window);
     while (window.isOpen())
     {
         window.clear(sf::Color(20, 23, 36));
@@ -516,24 +611,78 @@ int main()
                 }
             }
             // Testare sortari. In viitor le vom pune pe butoane
-            if(event->is<sf::Event::KeyPressed>()){
+            if(event->getIf<sf::Event::KeyPressed>()){
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
                     filewindow[current].sort = SORT_NAME;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
                     std::cout << "Sorted by name!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
                     filewindow[current].sort = SORT_DATE;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
                     std::cout << "Sorted by date!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
                     filewindow[current].sort = SORT_TYPE;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
                     std::cout << "Sorted by type!\n";
                 }
                 if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
                     filewindow[current].sort = SORT_SIZE;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
                     std::cout << "Sorted by size!\n";
                 }
-                _update_window(filewindow[current], filewindow[current].currentPath);
+
+                if (filewindow[current].isSearching) {
+                    // this will have to be a function
+                    auto* keyPressed = event->getIf<sf::Event::KeyPressed>();
+                    std::string keycode = sf::Keyboard::getDescription(keyPressed->scancode);
+                    std::cout << keycode << "\n";
+                    if (keycode == "Backspace") {
+                        if (!filewindow[current].searchString.empty())
+                            filewindow[current].searchString.pop_back();
+                    }
+                    else if (keycode == "Enter") {
+                        _update_window_from_search(filewindow[current]);
+                        filewindow[current].isSearching = false;
+                        std::cout << "b";
+                    }
+                    else if (keycode == "Caps Lock")
+                        capsOn = !capsOn;
+                    else if (keycode != "Escape" and
+                             keycode != "Ctrl" and
+                             keycode != "Shift" and
+                             keycode != "Alt" and
+                             keycode != "Tab" and
+                             keycode != "Windows" and
+                             keycode != "Caps Lock") {
+                        if ((!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == false) || (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == true))
+                            if (keycode[0] >= 'A' && keycode[0] <= 'Z') filewindow[current].searchString += keycode[0] + 32; // uncap letters
+                            else filewindow[current].searchString += keycode[0];
+                        if ((sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == false) || (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == true)) {
+                            if (keycode[0] >= 65 && keycode[0] <= 90) filewindow[current].searchString += keycode[0]; // capitalized letters
+                            else if (keycode[0] >= '0' && keycode[0] <= '9') {
+                                if (keycode[0] == '0') filewindow[current].searchString += ')';
+                                if (keycode[0] == '1') filewindow[current].searchString += '!';
+                                if (keycode[0] == '2') filewindow[current].searchString += '@';
+                                if (keycode[0] == '3') filewindow[current].searchString += '#';
+                                if (keycode[0] == '4') filewindow[current].searchString += '$';
+                                if (keycode[0] == '5') filewindow[current].searchString += '%';
+                                if (keycode[0] == '6') filewindow[current].searchString += '^';
+                                if (keycode[0] == '7') filewindow[current].searchString += '&';
+                                if (keycode[0] == '8') filewindow[current].searchString += '*';
+                                if (keycode[0] == '9') filewindow[current].searchString += '(';
+                            }
+                            else filewindow[current].searchString += keycode[0];
+                        }
+                    }
+                    // need to figure out how to do shift + key = different input
+                }
+                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Enter)) {
+                    filewindow[current].isSearching = !filewindow[current].isSearching;
+                    //std::cout << "b";
+                }
+
             }
             // I hate sfml3 events AAAAHHH
             if (auto *mousewheelscrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
