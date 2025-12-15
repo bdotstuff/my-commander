@@ -11,6 +11,8 @@
 
 namespace fs = std::filesystem;
 
+sf::RenderWindow mainWindow;
+
 // Definim aici constante, simplifica foarte mult modificarea acestora in mai multe parti ale codului, si sunt mai usor de gasit
 #define POS_OFFSET         25
 #define BOX_HEIGHT         20
@@ -36,6 +38,7 @@ enum sortingType{
 struct entry {
     fs::path path;
     bool selected;
+    bool isBackEntry;
     sf::RectangleShape box;
     sf::Rect<float> areaBox;
     std::string name;
@@ -170,7 +173,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             if(pos.y >= PADDING_TOP){
                 window.draw(box);
                 window.draw(text);
-                if(i == 0 && (filewindow[side].list[i].path == filewindow[side].currentPath.parent_path() || filewindow[side].list[i].name == "..")){
+                if(i == 0 && (filewindow[side].list[i].path == filewindow[side].currentPath.parent_path() || filewindow[side].list[i].isBackEntry)){
                     sf::Sprite iconSprite(texture_backIcon);
                     iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
                     window.draw(iconSprite);
@@ -304,6 +307,7 @@ void _update_window(fileWindow &window, fs::path newPath, bool isNewWindow) {
         }
         else temp.selected = false;
         temp.name = "..";
+        temp.isBackEntry = true;
         window.list.push_back(temp);
     }
 
@@ -356,14 +360,13 @@ void _update_window(fileWindow &window, fs::path newPath, bool isNewWindow) {
 }
 
 void _update_window_from_search(fileWindow &window) { // no newPath since it does not enter any directory, no isNewWindow since it always is a new window
-    window.midSearch = true;
     window.list.clear();
-    entry tempinit;
-    tempinit.path = window.currentPath; // to return back to pre-search
-    tempinit.selected = false;
-    tempinit.name = "..";
-    window.list.push_back(tempinit);
-    std::cout << window.currentPath << " " << tempinit.path << "\n";
+    // entry tempinit;
+    // tempinit.path = window.currentPath; // to return back to pre-search
+    // tempinit.selected = false;
+    // tempinit.name = "..";
+    // tempinit.isBackEntry = true;
+    // window.list.push_back(tempinit); // actually this sucks to debug so out it goes
     for (auto e : fs::recursive_directory_iterator(window.currentPath)) {
         if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN) and e.path().stem().string().find(window.searchString) != std::string::npos) {
             std::cout << window.searchString << " " << e.path().string() << "\n";
@@ -413,15 +416,20 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
 // Acum deschidem cu un path. Acelasi motiv ca la _get_hover_path
 void _command_open(fileWindow& window, fs::path p) {
     if (window.currentPath != p or window.midSearch == true) {
-        window.midSearch = false;
-        if (fs::is_directory(p)) {
+        std::cout << "entered open cmd" << std::endl;
+        if (fs::is_directory(p) or window.midSearch == true) {
+
             window.scrollAmount = 0;
-            _update_window(window, p, true);
+            if (window.midSearch) {
+                std::cout << "opening attempt" << std::endl;
+                _update_window_from_search(window);
+            }
+            else _update_window(window, p, true);
         }
         else { // Automatically find a matching app to open the given file
-
             ShellExecute(NULL, "open", p.string().c_str(), NULL, NULL, SW_SHOW);
         }
+        window.midSearch = false;
     }
 }
 
@@ -539,65 +547,65 @@ int main()
     _update_window(filewindow[0], fs::current_path(), true);
     _update_window(filewindow[1], "C:\\", true);
 
-    sf::RenderWindow window;
-    window.create(sf::VideoMode({ 800, 600 }), "My window");
+
+    mainWindow.create(sf::VideoMode({ 800, 600 }), "My window");
 
     _thumb_from_scroll(filewindow[0], scrollbar[0]);
     _thumb_from_scroll(filewindow[1], scrollbar[1]);
-    _draw_lists(filewindow, window);
-    while (window.isOpen())
+    _draw_lists(filewindow, mainWindow);
+    while (mainWindow.isOpen())
     {
-        window.clear(sf::Color(20, 23, 36));
-        _draw_ui(window);
+        mainWindow.clear(sf::Color(20, 23, 36));
+        _draw_ui(mainWindow);
 
-        historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], window);
-        historywindow[1] = _draw_list_history_button(sf::Vector2f(window.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], window);
+        historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], mainWindow);
+        historywindow[1] = _draw_list_history_button(sf::Vector2f(mainWindow.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], mainWindow);
 
-        if (sf::Mouse::getPosition(window).x > window.getSize().x / 2 + LINE_PADDING) current = 1;
+        if (sf::Mouse::getPosition(mainWindow).x > mainWindow.getSize().x / 2 + LINE_PADDING) current = 1;
         else current = 0;
-        _draw_lists(filewindow, window);
-        _draw_scrollbars(filewindow, scrollbar, window);
+        _draw_lists(filewindow, mainWindow);
+        _draw_scrollbars(filewindow, scrollbar, mainWindow);
 
-        while (std::optional event = window.pollEvent()) // event-uri/actiuni din sisteme periferice
+        while (std::optional event = mainWindow.pollEvent()) // event-uri/actiuni din sisteme periferice
         {
             if (event->is<sf::Event::Closed>())
-                window.close();
+                mainWindow.close();
             if (const auto* resized = event->getIf<sf::Event::Resized>()) // reajustarea marimii la resize
             {
                 sf::FloatRect visibleArea({0.f, 0.f}, sf::Vector2f(resized->size));
-                window.setView(sf::View(visibleArea));
+                mainWindow.setView(sf::View(visibleArea));
             }
             if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && scrollbarClicked == true) {
-                sf::Vector2<float> mousePos = (sf::Vector2<float>)sf::Mouse::getPosition(window);
+                sf::Vector2<float> mousePos = (sf::Vector2<float>)sf::Mouse::getPosition(mainWindow);
                 if(mousePos.y >= scrollbar[current].track.position.y && mousePos.y <= scrollbar[current].track.position.y+scrollbar[current].track.size.y){
                     scrollbar[current].thumb.position.y = scrollbar[current].track.position.y;
-                    _scroll_from_thumb(filewindow[current], scrollbar[current], window);
-                    _draw_scrollbars(filewindow, scrollbar, window);
+                    _scroll_from_thumb(filewindow[current], scrollbar[current], mainWindow);
+                    _draw_scrollbars(filewindow, scrollbar, mainWindow);
                 }
             }
             else scrollbarClicked = false;
             if (event->is<sf::Event::MouseButtonPressed>()) {
-                if(scrollbar[current].track.contains((sf::Vector2<float>)sf::Mouse::getPosition(window))){
+                if(scrollbar[current].track.contains((sf::Vector2<float>)sf::Mouse::getPosition(mainWindow))){
                     scrollbarClicked = true;
                 }
-                _command_open(filewindow[current], _get_hover_path(historywindow[current], window));
-                if(_get_hover_index(filewindow[current], window) == -1){
+                _command_open(filewindow[current], _get_hover_path(historywindow[current], mainWindow));
+                if(_get_hover_index(filewindow[current], mainWindow) == -1){
                     for(auto &e : filewindow[current].list){
                         e.selected = false;
                     }
                 }
-                else if(filewindow[current].list[_get_hover_index(filewindow[current], window)].selected == false){
+                else if(filewindow[current].list[_get_hover_index(filewindow[current], mainWindow)].selected == false){
                     for(auto &e : filewindow[current].list){
                         e.selected = false;
                     }
-                    _command_select(filewindow[current], _get_hover_index(filewindow[current], window));
+                    _command_select(filewindow[current], _get_hover_index(filewindow[current], mainWindow));
                     clock.restart();
                 }
                 else if(clock.getElapsedTime().asMilliseconds() < DOUBLE_CLICK_TIME){
-                    _command_open(filewindow[current], _get_hover_path(filewindow[current], window));
+                    _command_open(filewindow[current], _get_hover_path(filewindow[current], mainWindow));
                     filewindow[current].scrollAmount = 0;
                     _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                    _draw_scrollbars(filewindow, scrollbar, window);
+                    _draw_scrollbars(filewindow, scrollbar, mainWindow);
                     clock.restart();
                 }
                 clock.restart();
@@ -607,7 +615,7 @@ int main()
                     _command_back(filewindow[current]);
                     filewindow[current].scrollAmount = 0;
                     _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                    _draw_scrollbars(filewindow, scrollbar, window);
+                    _draw_scrollbars(filewindow, scrollbar, mainWindow);
                 }
             }
             // Testare sortari. In viitor le vom pune pe butoane
@@ -643,7 +651,11 @@ int main()
                             filewindow[current].searchString.pop_back();
                     }
                     else if (keycode == "Enter") {
-                        _update_window_from_search(filewindow[current]);
+                        if (!filewindow[current].searchString.empty()) {
+                            filewindow[current].midSearch = true;
+                            _command_open(filewindow[current], "placeholder_path");
+                        }
+
                         filewindow[current].isSearching = false;
                         std::cout << "b";
                     }
@@ -695,8 +707,8 @@ int main()
                     }
 
                     // Verifica sa nu mearga in afara
-                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < window.getSize().y-PADDING_TOP-10){
-                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)window.getSize().y-PADDING_TOP-10;
+                    if(filewindow[current].list.size()*POS_OFFSET + filewindow[current].scrollAmount < mainWindow.getSize().y-PADDING_TOP-10){
+                        filewindow[current].scrollAmount = -((float)(filewindow[current].list.size())*POS_OFFSET)+(float)mainWindow.getSize().y-PADDING_TOP-10;
                     }
                     if(filewindow[current].scrollAmount > 0){
                         filewindow[current].scrollAmount = 0;
@@ -706,7 +718,7 @@ int main()
             }
         }
 
-        window.display();
+        mainWindow.display();
     }
     return 0;
 }
