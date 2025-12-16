@@ -55,6 +55,7 @@ struct fileWindow {
     float scrollAmount; // Offset-ul pozitiei butoanelor atunci cand dai scroll
     bool isSearching;
     bool midSearch;
+    bool additionalPostSearchCheck;
     std::string searchString;
 } filewindow[2], historywindow[2];
 
@@ -415,11 +416,12 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
 
 // Acum deschidem cu un path. Acelasi motiv ca la _get_hover_path
 void _command_open(fileWindow& window, fs::path p) {
-    if (window.currentPath != p or window.midSearch == true) {
+    if (window.currentPath != p or window.midSearch == true or window.additionalPostSearchCheck == true) {
         std::cout << "entered open cmd" << std::endl;
-        if (fs::is_directory(p) or window.midSearch == true) {
+        if (fs::is_directory(p) or window.midSearch == true or window.additionalPostSearchCheck == true) {
 
             window.scrollAmount = 0;
+            window.additionalPostSearchCheck = false;
             if (window.midSearch) {
                 std::cout << "opening attempt" << std::endl;
                 _update_window_from_search(window);
@@ -429,7 +431,9 @@ void _command_open(fileWindow& window, fs::path p) {
         else { // Automatically find a matching app to open the given file
             ShellExecute(NULL, "open", p.string().c_str(), NULL, NULL, SW_SHOW);
         }
+        if (window.midSearch == true) window.additionalPostSearchCheck = true;
         window.midSearch = false;
+
     }
 }
 
@@ -486,7 +490,7 @@ void _command_rename(fileWindow& window, fs::path newName) {
     _update_window(window, window.currentPath, true);
 }
 
-void _draw_ui(sf::RenderWindow &window){
+void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2]){
     sf::RectangleShape bgbar;
     bgbar.setPosition(sf::Vector2f(0, 0)); // border top
     bgbar.setFillColor(sf::Color::White);
@@ -502,6 +506,14 @@ void _draw_ui(sf::RenderWindow &window){
     bgbar.setFillColor(sf::Color(58, 52, 74));
     bgbar.setSize(sf::Vector2f(window.getSize().x, 25));
     window.draw(bgbar);
+    for (int i = 0; i < 2; i++) {
+        if (filewindow[i].isSearching) {
+            bgbar.setPosition(sf::Vector2f(i*window.getSize().x/2, 60));
+            bgbar.setFillColor(sf::Color(158, 152, 174));
+            bgbar.setSize(sf::Vector2f(window.getSize().x/2, 25));
+            window.draw(bgbar);
+        }
+    }
 
     bgbar.setPosition(sf::Vector2f(0, 60)); // extra white before search
     bgbar.setFillColor(sf::Color::White);
@@ -556,7 +568,7 @@ int main()
     while (mainWindow.isOpen())
     {
         mainWindow.clear(sf::Color(20, 23, 36));
-        _draw_ui(mainWindow);
+        _draw_ui(mainWindow, filewindow);
 
         historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], mainWindow);
         historywindow[1] = _draw_list_history_button(sf::Vector2f(mainWindow.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], mainWindow);
@@ -620,27 +632,27 @@ int main()
             }
             // Testare sortari. In viitor le vom pune pe butoane
             if(event->getIf<sf::Event::KeyPressed>()){
-                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
-                    filewindow[current].sort = SORT_NAME;
-                    _update_window(filewindow[current], filewindow[current].currentPath, true);
-                    std::cout << "Sorted by name!\n";
-                }
-                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
-                    filewindow[current].sort = SORT_DATE;
-                    _update_window(filewindow[current], filewindow[current].currentPath, true);
-                    std::cout << "Sorted by date!\n";
-                }
-                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
-                    filewindow[current].sort = SORT_TYPE;
-                    _update_window(filewindow[current], filewindow[current].currentPath, true);
-                    std::cout << "Sorted by type!\n";
-                }
-                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
-                    filewindow[current].sort = SORT_SIZE;
-                    _update_window(filewindow[current], filewindow[current].currentPath, true);
-                    std::cout << "Sorted by size!\n";
-                }
-
+                bool wasEnterPressed = false;
+                // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
+                //     filewindow[current].sort = SORT_NAME;
+                //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                //     std::cout << "Sorted by name!\n";
+                // }
+                // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
+                //     filewindow[current].sort = SORT_DATE;
+                //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                //     std::cout << "Sorted by date!\n";
+                // }
+                // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
+                //     filewindow[current].sort = SORT_TYPE;
+                //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                //     std::cout << "Sorted by type!\n";
+                // }
+                // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
+                //     filewindow[current].sort = SORT_SIZE;
+                //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                //     std::cout << "Sorted by size!\n";
+                // }
                 if (filewindow[current].isSearching) {
                     // this will have to be a function
                     auto* keyPressed = event->getIf<sf::Event::KeyPressed>();
@@ -655,8 +667,8 @@ int main()
                             filewindow[current].midSearch = true;
                             _command_open(filewindow[current], "placeholder_path");
                         }
-
                         filewindow[current].isSearching = false;
+                        wasEnterPressed = true;
                         std::cout << "b";
                     }
                     else if (keycode == "Caps Lock")
@@ -690,11 +702,9 @@ int main()
                     }
                     // need to figure out how to do shift + key = different input
                 }
-                if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Enter)) {
-                    filewindow[current].isSearching = !filewindow[current].isSearching;
-                    //std::cout << "b";
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Enter) and !wasEnterPressed) {
+                    filewindow[current].isSearching = true;
                 }
-
             }
             // I hate sfml3 events AAAAHHH
             if (auto *mousewheelscrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
