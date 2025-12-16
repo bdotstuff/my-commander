@@ -114,8 +114,6 @@ void _scroll_from_thumb(fileWindow &filewindow, scrollBar &scrollbar, sf::Render
     }
 }
 
-// Este mai bine path in loc de index. Asa putem folosi aceeasi functie si pentru filewindow, cat si pentru historywindow
-// De obs totusi ca conteaza ordinea in care se apeleaza functia
 fs::path _get_hover_path(fileWindow filewindow, sf::RenderWindow &window) {
     for (int i = 0; i < filewindow.list.size(); i++) {
         if (filewindow.list[i].areaBox.contains(sf::Vector2<float>(sf::Mouse::getPosition(window))))
@@ -131,7 +129,6 @@ int _get_hover_index(fileWindow filewindow, sf::RenderWindow &window) {
     return -1;
 }
 
-// Doar actualizam partial fiecare filewindow, nu e nevoie de variabile temporare, etc.
 void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
     sf::Text text(font_listFile);
     sf::Vector2f pos;
@@ -414,7 +411,6 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
     }
 }
 
-// Acum deschidem cu un path. Acelasi motiv ca la _get_hover_path
 void _command_open(fileWindow& window, fs::path p) {
     if (window.currentPath != p or window.midSearch == true or window.additionalPostSearchCheck == true) {
         std::cout << "entered open cmd" << std::endl;
@@ -490,7 +486,8 @@ void _command_rename(fileWindow& window, fs::path newName) {
     _update_window(window, window.currentPath, true);
 }
 
-void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2]){
+void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
+    timer += 0.0025;
     sf::RectangleShape bgbar;
     bgbar.setPosition(sf::Vector2f(0, 0)); // border top
     bgbar.setFillColor(sf::Color::White);
@@ -509,9 +506,24 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2]){
     for (int i = 0; i < 2; i++) {
         if (filewindow[i].isSearching) {
             bgbar.setPosition(sf::Vector2f(i*window.getSize().x/2, 60));
-            bgbar.setFillColor(sf::Color(158, 152, 174));
+            bgbar.setFillColor(sf::Color(128, 122, 144));
             bgbar.setSize(sf::Vector2f(window.getSize().x/2, 25));
             window.draw(bgbar);
+
+            sf::Text typingbar(font_listFile);
+            typingbar.setCharacterSize(16);
+            typingbar.setString("|");
+            if (timer < 1)
+                typingbar.setFillColor(sf::Color::White);
+            else if (timer < 2)
+                typingbar.setFillColor(sf::Color(0, 0, 0, 0));
+            else timer = 0;
+            sf::Text refstring(font_listFile);
+            refstring.setCharacterSize(16);
+            refstring.setString(filewindow[i].searchString);
+            refstring.setPosition(sf::Vector2f(PADDING_LEFT_SRC+i*window.getSize().x/2, PADDING_TOP_SRC));
+            typingbar.setPosition(refstring.getPosition() + sf::Vector2f(5 + refstring.getGlobalBounds().size.x, 0));
+            window.draw(typingbar);
         }
     }
 
@@ -565,10 +577,12 @@ int main()
     _thumb_from_scroll(filewindow[0], scrollbar[0]);
     _thumb_from_scroll(filewindow[1], scrollbar[1]);
     _draw_lists(filewindow, mainWindow);
+
+    float timer;
     while (mainWindow.isOpen())
     {
         mainWindow.clear(sf::Color(20, 23, 36));
-        _draw_ui(mainWindow, filewindow);
+        _draw_ui(mainWindow, filewindow, timer);
 
         historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], mainWindow);
         historywindow[1] = _draw_list_history_button(sf::Vector2f(mainWindow.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], mainWindow);
