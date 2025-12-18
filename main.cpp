@@ -272,6 +272,15 @@ fileWindow _draw_list_history_button(sf::Vector2f pos, fileWindow file, sf::Rend
     return history;
 }
 
+bool _clicked_over_history_button(fileWindow historywindow, sf::RenderWindow &window) {
+    for (int i = 0; i < historywindow.list.size(); i++) {
+        if (historywindow.list[i].areaBox.contains(sf::Vector2f(sf::Mouse::getPosition(window)))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Functii ajutatoare, nu le modific momentan
 void _print_path(fs::path path) {
     std::cout << path << std::endl;
@@ -365,7 +374,9 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
     // tempinit.name = "..";
     // tempinit.isBackEntry = true;
     // window.list.push_back(tempinit); // actually this sucks to debug so out it goes
+    std::cout << window.currentPath << "---" << std::endl;
     for (auto e : fs::recursive_directory_iterator(window.currentPath)) {
+        std::cout << window.searchString << " " << e.path().string() << "\n";
         if(!(GetFileAttributes(e.path().string().c_str()) & FILE_ATTRIBUTE_HIDDEN) and e.path().stem().string().find(window.searchString) != std::string::npos) {
             std::cout << window.searchString << " " << e.path().string() << "\n";
             entry temp;
@@ -434,7 +445,8 @@ void _command_open(fileWindow& window, fs::path p) {
 }
 
 void _command_back(fileWindow& window) {
-    _update_window(window, window.currentPath.parent_path(), true);
+    if (window.currentPath.relative_path() != window.currentPath.root_path())
+        _update_window(window, window.currentPath.parent_path(), true);
 }
 
 void _command_select(fileWindow& window, int index) {
@@ -614,7 +626,8 @@ int main()
                 if(scrollbar[current].track.contains((sf::Vector2<float>)sf::Mouse::getPosition(mainWindow))){
                     scrollbarClicked = true;
                 }
-                _command_open(filewindow[current], _get_hover_path(historywindow[current], mainWindow));
+                if (_clicked_over_history_button(historywindow[current], mainWindow))
+                    _command_open(filewindow[current], _get_hover_path(historywindow[current], mainWindow));
                 if(_get_hover_index(filewindow[current], mainWindow) == -1){
                     for(auto &e : filewindow[current].list){
                         e.selected = false;
