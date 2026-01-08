@@ -92,26 +92,31 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
     sf::Text text(font_listFile);
     sf::Vector2f pos;
     sf::Vector2f size;
+
+    sf::Vector2 wsize = window.getSize();
     for(int side=0;side<2;side++){
 
         sf::Text searchText(font_listFile);
         searchText.setCharacterSize(16);
-        searchText.setPosition(sf::Vector2f(PADDING_LEFT_SRC+side*window.getSize().x/2, PADDING_TOP_SRC));
+        searchText.setPosition(sf::Vector2f(PADDING_LEFT_SRC+side*wsize.x/2, PADDING_TOP_SRC));
         searchText.setString(filewindow[side].searchString);
         window.draw(searchText);
 
-        for(int i=0;i<filewindow[side].list.size();i++){
-            pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((window.getSize().x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP+PADDING_LEFT};
+        std::cout << filewindow[side].scrollAmount << std::endl;
+
+        for(int i=-(filewindow[side].scrollAmount/25);i<filewindow[side].list.size();i++){
+            pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((wsize.x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP+PADDING_LEFT};
             size = {(float)(window.getSize().x)/2 - SCROLLBAR_WIDTH-ICON_SIZE-PADDING_LEFT*3, BOX_HEIGHT};
 
-            // creating the highlight box
+            if (pos.y > window.getSize().y) break;
+                // creating the highlight box
             sf::RectangleShape box;
             box.setPosition(pos);
             box.setSize(size);
             box.setFillColor(sf::Color::Transparent);
             box.setOutlineThickness(2);
 
-            // writing file text
+                // writing file text
             sf::Rect<float> areaBox(pos, size);
             text.setPosition(pos);
             text.setFont(font_listFile);
@@ -141,7 +146,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
                 else box.setOutlineColor(sf::Color::Transparent);
             }
 
-            // writing the extension
+                // writing the extension
             sf::Text ext(font_listFile);
             ext.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT, pos.y));
             ext.setCharacterSize(16);
@@ -149,7 +154,7 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             ext.setString(sf::String(filewindow[side].list[i].path.extension()));
             if (fs::is_directory(filewindow[side].list[i].path)) ext.setString("<DIR>");
 
-            // writing the file size
+                // writing the file size
             sf::Text fsize(font_listFile);
             fsize.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE, pos.y));
             fsize.setCharacterSize(16);
@@ -162,12 +167,12 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             date.setCharacterSize(16);
             date.setFillColor(sf::Color::White);
             if (fs::is_directory(filewindow[side].list[i].path)) date.setString("<DIR>");
-            //else date.setString(sf::String(std::format("{}", fs::last_write_time(filewindow[side].list[i].path))));
+                //else date.setString(sf::String(std::format("{}", fs::last_write_time(filewindow[side].list[i].path))));
             else date.setString("some date");
-            //fsize.setString(sf::String(fs::file_size(filewindow[side].list[i].path)));
+                //fsize.setString(sf::String(fs::file_size(filewindow[side].list[i].path)));
 
 
-            if(pos.y >= PADDING_TOP and pos.y <= window.getSize().y){
+            if(pos.y >= PADDING_TOP and pos.y <= window.getSize().y - 20){
                 window.draw(box);
                 window.draw(text);
                 window.draw(ext);
@@ -188,7 +193,6 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
                     iconSprite.setPosition({pos.x-ICON_SIZE-PADDING_LEFT, pos.y+3});
                     window.draw(iconSprite);
                 }
-
                 filewindow[side].list[i].box = box;
                 filewindow[side].list[i].areaBox = areaBox;
             }
@@ -523,11 +527,15 @@ void _update_window(fileWindow &window, fs::path newPath, bool isNewWindow) {
 
 void _update_window_from_search(fileWindow &window) { // no newPath since it does not enter any directory, no isNewWindow since it always is a new window
     window.list.clear();
-    for(auto e : fs::recursive_directory_iterator(window.currentPath, fs::directory_options::skip_permission_denied)) {
-        std::cout << e.path() << std::endl;
-        DWORD attrs = GetFileAttributes(e.path().string().c_str());
-        if(!(attrs & FILE_ATTRIBUTE_HIDDEN) and e.path().stem().string().find(window.searchString) != std::string::npos) {
-            window.list.push_back({.path = e.path(), .selected = false, .name = e.path().filename().string()});
+    for(auto e = fs::recursive_directory_iterator(window.currentPath, fs::directory_options::skip_permission_denied);
+        e != fs::recursive_directory_iterator(); e++) {
+        //std::cout << e->path() << std::endl;
+        DWORD attrs = GetFileAttributes(e->path().string().c_str());
+        if(attrs & FILE_ATTRIBUTE_HIDDEN or FILE_ATTRIBUTE_SYSTEM) {
+            e.disable_recursion_pending();
+        }
+        if(!(attrs & FILE_ATTRIBUTE_HIDDEN) and e->path().stem().string().find(window.searchString) != std::string::npos) {
+            window.list.push_back({.path = e->path(), .selected = false, .name = e->path().filename().string()});
         }
     }
     auto first = window.list.begin()+1;
@@ -569,6 +577,7 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
 void _command_open(fileWindow& window, fs::path p) {
     if (window.currentPath != p or window.midSearch == true or window.additionalPostSearchCheck == true) {
         std::cout << "entered open cmd" << std::endl;
+
         if (fs::is_directory(p) or window.midSearch == true or window.additionalPostSearchCheck == true) {
 
             window.scrollAmount = 0;
@@ -726,7 +735,7 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
 int main()
 {
     sf::RenderWindow introWindow;
-    introWindow.create(sf::VideoMode({ 300, 100 }), "press the number");
+    introWindow.create(sf::VideoMode({ 300, 100 }), "press the                number     ");
     while (introWindow.isOpen()) {
         introWindow.clear(sf::Color(20, 23, 36));
 
@@ -891,12 +900,12 @@ int main()
             }
             if(!filewindow[current].isSearching){
                 if(event->is<sf::Event::KeyPressed>()){
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
-                        _command_back(filewindow[current]);
-                        filewindow[current].scrollAmount = 0;
-                        _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                        _draw_scrollbars(filewindow, scrollbar, mainWindow);
-                    }
+                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
+                    //     _command_back(filewindow[current]);
+                    //     filewindow[current].scrollAmount = 0;
+                    //     _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                    //     _draw_scrollbars(filewindow, scrollbar, mainWindow);
+                    // }
                     if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
                         filewindow[current].sort = SORT_NAME;
                         _update_window(filewindow[current], filewindow[current].currentPath, true);
