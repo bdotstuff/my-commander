@@ -102,10 +102,10 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
         searchText.setString(filewindow[side].searchString);
         window.draw(searchText);
 
-        std::cout << filewindow[side].scrollAmount << std::endl;
+
 
         for(int i=-(filewindow[side].scrollAmount/25);i<filewindow[side].list.size();i++){
-            pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((wsize.x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP+PADDING_LEFT};
+            pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((wsize.x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP};
             size = {(float)(window.getSize().x)/2 - SCROLLBAR_WIDTH-ICON_SIZE-PADDING_LEFT*3, BOX_HEIGHT};
 
             if (pos.y > window.getSize().y) break;
@@ -348,7 +348,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attr.setString("Name");
         sf::Rect<float> box;
         box.position = {PADDING_LEFT+ICON_SIZE+6+float(window.getSize().x/2*side), 90};
-        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 75};
+        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
         window.draw(attr);
         attributeButtons[side].push_back(box);
@@ -356,7 +356,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT, 90));
         attr.setString("Ext");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT, 90};
-        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 75};
+        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
         window.draw(attr);
         attributeButtons[side].push_back(box);
@@ -364,7 +364,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE, 90));
         attr.setString("Size");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE, 90};
-        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 75};
+        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
         window.draw(attr);
         attributeButtons[side].push_back(box);
@@ -372,7 +372,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90));
         attr.setString("Date");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90};
-        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 75};
+        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
         window.draw(attr);
         attributeButtons[side].push_back(box);
@@ -900,23 +900,32 @@ int main()
             }
             if(!filewindow[current].isSearching){
                 if(event->is<sf::Event::KeyPressed>()){
-                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
-                    //     _command_back(filewindow[current]);
-                    //     filewindow[current].scrollAmount = 0;
-                    //     _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                    //     _draw_scrollbars(filewindow, scrollbar, mainWindow);
-                    // }
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
+                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
+                        std::string fname = filewindow[current].currentPath.root_name().string();
+                        fname[0] = char(int(fname[0]) + 1);
+                        fname.append("\\");
+                        fs::path fpath(fname);
+                        fs::path cpath("C:\\");
+                        if (!is_directory(fpath))
+                            filewindow[current].currentPath = cpath;
+                        else filewindow[current].currentPath = fpath;
+                        std::cout << fname << std::endl;
+                        filewindow[current].scrollAmount = 0;
+                        _update_window(filewindow[current], filewindow[current].currentPath, true);
+                        _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                        _draw_scrollbars(filewindow, scrollbar, mainWindow);
+                    }
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)) {
                         filewindow[current].sort = SORT_NAME;
                         _update_window(filewindow[current], filewindow[current].currentPath, true);
                         std::cout << "Sorted by name!\n";
                     }
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)) {
                         filewindow[current].sort = SORT_DATE;
                         _update_window(filewindow[current], filewindow[current].currentPath, true);
                         std::cout << "Sorted by date!\n";
                     }
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)) {
                         filewindow[current].sort = SORT_TYPE;
                         _update_window(filewindow[current], filewindow[current].currentPath, true);
                         std::cout << "Sorted by type!\n";
