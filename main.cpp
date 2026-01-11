@@ -11,6 +11,7 @@
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/System.hpp>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -20,11 +21,11 @@ namespace fs = std::filesystem;
 #define PADDING_LEFT       10
 #define PADDING_TOP        120
 #define PADDING_TOP_SRC    60
-#define PADDING_LEFT_SRC   90
+#define PADDING_LEFT_SRC   130
 
 #define PADDING_RIGHT_EXT  40
-#define PADDING_RIGHT_SIZE 60
-#define PADDING_RIGHT_DATE 80
+#define PADDING_RIGHT_SIZE 100
+#define PADDING_RIGHT_DATE 120
 #define PADDING_RIGHT_ATTR
 
 #define LINE_PADDING        5
@@ -81,7 +82,7 @@ struct scrollBar{
 } scrollbar[2];
 
 std::vector<sf::Rect<float>> menuButtons;
-std::vector<sf::Rect<float>> attributeButtons[2];
+std::vector<sf::Rect<float>> attributeButtons[2], rootButtons[2];
 
 sf::Font font_listFile("utfont.ttf");
 sf::Texture texture_cmdIconPlaceholder;
@@ -102,8 +103,6 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
         searchText.setPosition(sf::Vector2f(PADDING_LEFT_SRC+side*wsize.x/2, PADDING_TOP_SRC));
         searchText.setString(filewindow[side].searchString);
         window.draw(searchText);
-
-
 
         for(int i=-(filewindow[side].scrollAmount/25);i<filewindow[side].list.size();i++){
             pos = {(float)ICON_SIZE+PADDING_LEFT*2+side*((wsize.x)/2), (float)i*POS_OFFSET+filewindow[side].scrollAmount+PADDING_TOP};
@@ -128,10 +127,6 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
                 std::string ph = text.getString();
                 ph.erase(ph.size()-5); ph.append("[..]");
                 text.setString(ph);
-            }
-            if(GetFileAttributes(filewindow[side].list[i].path.string().c_str()) & FILE_ATTRIBUTE_HIDDEN) {
-                text.setFillColor(sf::Color::Red);
-                //text.setString(filewindow[side].list[i].name + " (HIDDEN)");
             }
             if (filewindow[side].list[i].selected == true){
                 box.setOutlineColor(sf::Color(160, 160, 160));
@@ -167,11 +162,8 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
             date.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, pos.y));
             date.setCharacterSize(16);
             date.setFillColor(sf::Color::White);
-            if (fs::is_directory(filewindow[side].list[i].path)) date.setString("<DIR>");
-                //else date.setString(sf::String(std::format("{}", fs::last_write_time(filewindow[side].list[i].path))));
-            else date.setString("some date");
-                //fsize.setString(sf::String(fs::file_size(filewindow[side].list[i].path)));
-
+            auto filetime = fs::last_write_time(filewindow[side].list[i].path);
+            date.setString(sf::String(std::format("{0:%R} {0:%F}", filetime)));
 
             if(pos.y >= PADDING_TOP and pos.y <= window.getSize().y - 20){
                 window.draw(box);
@@ -340,6 +332,22 @@ void _draw_menu_buttons(sf::RenderWindow &window){
     }
 }
 
+void _draw_root_change_buttons(sf::RenderWindow &window) {
+    for (int side = 0; side < 2; side++) {
+        sf::Text attr(font_listFile);
+        attr.setCharacterSize(16);
+        attr.setFillColor(sf::Color::Black);
+        attr.setPosition(sf::Vector2f(PADDING_LEFT+8+window.getSize().x/2*side, 60));
+        attr.setString("Change Root");
+        sf::Rect<float> box;
+        box.position = {PADDING_LEFT+8+float(window.getSize().x/2*side), 60};
+        box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
+        _draw_underline(window, box, attr);
+        window.draw(attr);
+        rootButtons[side].push_back(box);
+    }
+}
+
 void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
     for (int side = 0; side < 2; side++) {
         sf::Text attr(font_listFile);
@@ -363,7 +371,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attributeButtons[side].push_back(box);
 
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE, 90));
-        attr.setString("Size");
+        attr.setString("Size (Bytes)");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE, 90};
         box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
@@ -371,7 +379,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attributeButtons[side].push_back(box);
 
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90));
-        attr.setString("Date");
+        attr.setString("Date (H Y/D/M)");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90};
         box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
@@ -418,6 +426,16 @@ int _get_menu_index(sf::RenderWindow &window){
     }
     return -1;
 }
+int _get_rootchange_index(sf::RenderWindow &window, int side) {
+    int i = 0;
+    for(auto e : rootButtons[side]){
+        if(e.contains(sf::Vector2<float>(sf::Mouse::getPosition(window)))){
+            return i;
+        }
+        i++;
+    }
+    return -1;
+}
 
 fs::path _get_filename_from_prompt(){
     sf::RenderWindow window;
@@ -446,7 +464,7 @@ fs::path _get_filename_from_prompt(){
                     case 124:
                         break;
 
-                    // ENTER
+                        // ENTER
                     case 10:
                     case 13:{
                         window.close();
@@ -512,7 +530,6 @@ void _update_window(fileWindow &window, fs::path newPath, bool isNewWindow) {
         entry temp;
         temp.path = newPath.parent_path();
         if (isNewWindow == false) {
-            std::cout << index << std::endl;
             temp.selected = list[index].selected;
             index ++;
         }
@@ -578,7 +595,7 @@ void _update_window_from_search(fileWindow &window) { // no newPath since it doe
         e != fs::recursive_directory_iterator(); e++) {
         //std::cout << e->path() << std::endl;
         DWORD attrs = GetFileAttributes(e->path().string().c_str());
-        if(attrs & FILE_ATTRIBUTE_HIDDEN or FILE_ATTRIBUTE_SYSTEM) {
+        if(attrs & FILE_ATTRIBUTE_HIDDEN) {
             e.disable_recursion_pending();
         }
         if(!(attrs & FILE_ATTRIBUTE_HIDDEN) and e->path().stem().string().find(window.searchString) != std::string::npos) {
@@ -659,7 +676,6 @@ void _command_deselect(fileWindow& window, int index) {
 void _command_copy(fileWindow source, fileWindow& dest) {
     for (auto e : source.list) {
         if (e.selected == true) {
-            // Optiunile overwrite_existing si update_existing ar fi trebuit sa mearga, aparent e un bug de compilator
             fs::copy(e.path, dest.currentPath / e.path.filename(), fs::copy_options::update_existing);
         }
     }
@@ -765,11 +781,11 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
 
     bgbar.setPosition(sf::Vector2f(0, 60)); // extra white before search
     bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(80, 25));
+    bgbar.setSize(sf::Vector2f(120, 25));
     window.draw(bgbar);
     bgbar.setPosition(sf::Vector2f(window.getSize().x / 2, 60));
     bgbar.setFillColor(sf::Color::White);
-    bgbar.setSize(sf::Vector2f(80, 25));
+    bgbar.setSize(sf::Vector2f(120, 25));
     window.draw(bgbar);
 
     bgbar.setPosition(sf::Vector2f(0, 0)); // border left
@@ -805,7 +821,6 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
 
 int main()
 {
-    sf::RenderWindow introWindow;
     int strongCurrent;
     std::string str;
     sf::RenderWindow mainWindow;
@@ -822,8 +837,10 @@ int main()
     _update_window(filewindow[0], fs::current_path(), true);
     _update_window(filewindow[1], "C:\\", true);
 
-
     mainWindow.create(sf::VideoMode({ 1200, 600 }), "MyCommander");
+    auto cmdIcon = sf::Image{};
+    cmdIcon.loadFromFile("cmdIconPlaceholder.png");
+    mainWindow.setIcon(cmdIcon.getSize(), cmdIcon.getPixelsPtr());
 
     _thumb_from_scroll(filewindow[0], scrollbar[0]);
     _thumb_from_scroll(filewindow[1], scrollbar[1]);
@@ -838,6 +855,7 @@ int main()
         _draw_menu_buttons(mainWindow);
         _draw_attribute_buttons(mainWindow, 0);
         _draw_attribute_buttons(mainWindow, 1);
+        _draw_root_change_buttons(mainWindow);
 
         historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], mainWindow);
         historywindow[1] = _draw_list_history_button(sf::Vector2f(mainWindow.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], mainWindow);
@@ -854,7 +872,6 @@ int main()
             if (const auto* resized = event->getIf<sf::Event::Resized>()) // reajustarea marimii la resize
             {
                 sf::FloatRect visibleArea({0.f, 0.f}, sf::Vector2f(resized->size));
-                //if (visibleArea.size.x < 800) visibleArea.size.x = 800;
                 mainWindow.setView(sf::View(visibleArea));
             }
             if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && scrollbarClicked == true) {
@@ -921,6 +938,21 @@ int main()
                         break;
                     }
                 }
+                if (_get_rootchange_index(mainWindow, current) != -1) {
+                    std::string fname = filewindow[current].currentPath.root_name().string();
+                    fname[0] = char(int(fname[0]) + 1);
+                    fname.append("\\");
+                    fs::path fpath(fname);
+                    fs::path cpath("C:\\");
+                    if (!is_directory(fpath))
+                        filewindow[current].currentPath = cpath;
+                    else filewindow[current].currentPath = fpath;
+                    std::cout << fname << std::endl;
+                    filewindow[current].scrollAmount = 0;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
+                    _thumb_from_scroll(filewindow[current], scrollbar[current]);
+                    _draw_scrollbars(filewindow, scrollbar, mainWindow);
+                }
                 strongCurrent = current;
                 if(scrollbar[current].track.contains((sf::Vector2<float>)sf::Mouse::getPosition(mainWindow))){
                     scrollbarClicked = true;
@@ -963,7 +995,6 @@ int main()
             if(filewindow[current].isSearching){
                 if(event->is<sf::Event::TextEntered>()){
                     auto key = event->getIf<sf::Event::TextEntered>()->unicode;
-                    std::cout << key << "\n";
                     if(key == 10 || key == 13){ //ENTER
                     }
                     else if(key == 27){ //ESCAPE
@@ -977,119 +1008,28 @@ int main()
             }
             if(!filewindow[current].isSearching){
                 if(event->is<sf::Event::KeyPressed>()){
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B)){
-                        std::string fname = filewindow[current].currentPath.root_name().string();
-                        fname[0] = char(int(fname[0]) + 1);
-                        fname.append("\\");
-                        fs::path fpath(fname);
-                        fs::path cpath("C:\\");
-                        if (!is_directory(fpath))
-                            filewindow[current].currentPath = cpath;
-                        else filewindow[current].currentPath = fpath;
-                        std::cout << fname << std::endl;
-                        filewindow[current].scrollAmount = 0;
-                        _update_window(filewindow[current], filewindow[current].currentPath, true);
-                        _thumb_from_scroll(filewindow[current], scrollbar[current]);
-                        _draw_scrollbars(filewindow, scrollbar, mainWindow);
-                    }
-                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)) {
-                        filewindow[current].sort = SORT_NAME;
-                        _update_window(filewindow[current], filewindow[current].currentPath, true);
-                        std::cout << "Sorted by name!\n";
-                    }
-                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)) {
-                        filewindow[current].sort = SORT_DATE;
-                        _update_window(filewindow[current], filewindow[current].currentPath, true);
-                        std::cout << "Sorted by date!\n";
-                    }
-                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)) {
-                        filewindow[current].sort = SORT_TYPE;
-                        _update_window(filewindow[current], filewindow[current].currentPath, true);
-                        std::cout << "Sorted by type!\n";
-                    }
-                    if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
-                        filewindow[current].sort = SORT_SIZE;
-                        _update_window(filewindow[current], filewindow[current].currentPath, true);
-                        std::cout << "Sorted by size!\n";
-                    }
+                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
+                    //     filewindow[current].sort = SORT_NAME;
+                    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                    //     std::cout << "Sorted by name!\n";
+                    // }
+                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
+                    //     filewindow[current].sort = SORT_DATE;
+                    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                    //     std::cout << "Sorted by date!\n";
+                    // }
+                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
+                    //     filewindow[current].sort = SORT_TYPE;
+                    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                    //     std::cout << "Sorted by type!\n";
+                    // }
+                    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
+                    //     filewindow[current].sort = SORT_SIZE;
+                    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
+                    //     std::cout << "Sorted by size!\n";
+                    // }
                 }
             }
-            //if(event->getIf<sf::Event::KeyPressed>()){
-            //    bool wasEnterPressed = false;
-            //    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q)){
-            //    //     filewindow[current].sort = SORT_NAME;
-            //    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
-            //    //     std::cout << "Sorted by name!\n";
-            //    // }
-            //    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)){
-            //    //     filewindow[current].sort = SORT_DATE;
-            //    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
-            //    //     std::cout << "Sorted by date!\n";
-            //    // }
-            //    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E)){
-            //    //     filewindow[current].sort = SORT_TYPE;
-            //    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
-            //    //     std::cout << "Sorted by type!\n";
-            //    // }
-            //    // if(sf::Keyboard::isKeyPressed(sf::Keyboard::Key::R)){
-            //    //     filewindow[current].sort = SORT_SIZE;
-            //    //     _update_window(filewindow[current], filewindow[current].currentPath, true);
-            //    //     std::cout << "Sorted by size!\n";
-            //    // }
-            //    if (filewindow[current].isSearching) {
-            //        // this will have to be a function
-            //        auto* keyPressed = event->getIf<sf::Event::KeyPressed>();
-            //        std::string keycode = sf::Keyboard::getDescription(keyPressed->scancode);
-            //        std::cout << keycode << "\n";
-            //        if (keycode == "Backspace") {
-            //            if (!filewindow[current].searchString.empty())
-            //                filewindow[current].searchString.pop_back();
-            //        }
-            //        else if (keycode == "Enter") {
-            //            if (!filewindow[current].searchString.empty()) {
-            //                filewindow[current].midSearch = true;
-            //                _command_open(filewindow[current], "placeholder_path");
-            //            }
-            //            filewindow[current].isSearching = false;
-            //            wasEnterPressed = true;
-            //            std::cout << "b";
-            //        }
-            //        else if (keycode == "Caps Lock")
-            //            capsOn = !capsOn;
-            //        else if (keycode != "Escape" and
-            //                 keycode != "Ctrl" and
-            //                 keycode != "Shift" and
-            //                 keycode != "Alt" and
-            //                 keycode != "Tab" and
-            //                 keycode != "Windows" and
-            //                 keycode != "Caps Lock") {
-            //            if ((!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == false) || (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == true))
-            //                if (keycode[0] >= 'A' && keycode[0] <= 'Z') filewindow[current].searchString += keycode[0] + 32; // uncap letters
-            //                else filewindow[current].searchString += keycode[0];
-            //            if ((sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == false) || (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) and capsOn == true)) {
-            //                if (keycode[0] >= 65 && keycode[0] <= 90) filewindow[current].searchString += keycode[0]; // capitalized letters
-            //                else if (keycode[0] >= '0' && keycode[0] <= '9') {
-            //                    if (keycode[0] == '0') filewindow[current].searchString += ')';
-            //                    if (keycode[0] == '1') filewindow[current].searchString += '!';
-            //                    if (keycode[0] == '2') filewindow[current].searchString += '@';
-            //                    if (keycode[0] == '3') filewindow[current].searchString += '#';
-            //                    if (keycode[0] == '4') filewindow[current].searchString += '$';
-            //                    if (keycode[0] == '5') filewindow[current].searchString += '%';
-            //                    if (keycode[0] == '6') filewindow[current].searchString += '^';
-            //                    if (keycode[0] == '7') filewindow[current].searchString += '&';
-            //                    if (keycode[0] == '8') filewindow[current].searchString += '*';
-            //                    if (keycode[0] == '9') filewindow[current].searchString += '(';
-            //                }
-            //                else filewindow[current].searchString += keycode[0];
-            //            }
-            //        }
-            //        // need to figure out how to do shift + key = different input
-            //    }
-            //    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Enter) and !wasEnterPressed) {
-            //        filewindow[current].isSearching = true;
-            //    }
-            //}
-            // I hate sfml3 events AAAAHHH
             if (auto *mousewheelscrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 if (mousewheelscrolled->wheel == sf::Mouse::Wheel::Vertical) {
                     if(mousewheelscrolled->delta > 0){
