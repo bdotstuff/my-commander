@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 #include <windows.h>
 #include <conio.h>
@@ -418,6 +419,52 @@ int _get_menu_index(sf::RenderWindow &window){
     return -1;
 }
 
+fs::path _get_filename_from_prompt(){
+    sf::RenderWindow window;
+    sf::Text text(font_listFile);
+    text.setFillColor(sf::Color::White);
+    text.setCharacterSize(16);
+    text.setPosition({0,0});
+    std::string filename = "";
+    window.create(sf::VideoMode({ 300, 100 }), "Enter filename:");
+    window.clear(sf::Color(20, 23, 36));
+    while(window.isOpen()){
+        window.clear(sf::Color(20, 23, 36));
+        while (std::optional event = window.pollEvent()){
+            if(event->is<sf::Event::TextEntered>()){
+                auto key = event->getIf<sf::Event::TextEntered>()->unicode;
+                switch(key){
+                    // \ / : * ? " < > |
+                    case 92:
+                    case 47:
+                    case 58:
+                    case 42:
+                    case 63:
+                    case 34:
+                    case 60:
+                    case 62:
+                    case 124:
+                        break;
+
+                    // ENTER
+                    case 10:
+                    case 13:{
+                        window.close();
+                        return filename;
+                    }
+
+                    default:
+                        filename += key;
+                        break;
+                }
+            }
+        }
+        text.setString(filename);
+        window.draw(text);
+        window.display();
+    }
+}
+
 int _get_attribute_index(sf::RenderWindow &window, int side) {
     int i = 0;
     for(auto e : attributeButtons[side]){
@@ -612,7 +659,8 @@ void _command_deselect(fileWindow& window, int index) {
 void _command_copy(fileWindow source, fileWindow& dest) {
     for (auto e : source.list) {
         if (e.selected == true) {
-            copy(e.path, dest.currentPath);
+            // Optiunile overwrite_existing si update_existing ar fi trebuit sa mearga, aparent e un bug de compilator
+            fs::copy(e.path, dest.currentPath / e.path.filename(), fs::copy_options::update_existing);
         }
     }
     _update_window(dest, dest.currentPath, true);
@@ -641,7 +689,7 @@ void _command_rename(fileWindow& window, fs::path newName) {
     auto first = window.list.begin();
     auto last = window.list.end();
     auto is_selected = [](entry e) {return e.selected == true; }; // o functie care este apelata de count_if pentru fiecare element din lista
-    if (count_if(first, last, is_selected) == 1) {
+    if (count_if(first, last, is_selected) != 1) {
         std::cout << "Exactly one file must be selected for renaming";
     }
     else {
@@ -650,6 +698,29 @@ void _command_rename(fileWindow& window, fs::path newName) {
     }
     _update_window(window, window.currentPath, true);
 }
+
+void _command_new_file(fileWindow filewindow, fs::path filename) {
+    for(auto e : filewindow.list){
+        if(e.path == filename){
+            std::cout << "already exists, NOT creating\n";
+            return;
+        }
+    }
+    std::ofstream ofs(filename);
+    ofs.close();
+    _update_window(filewindow, filewindow.currentPath, true);
+}
+
+void _command_new_directory(fileWindow filewindow, fs::path filename) {
+    for(auto e : filewindow.list){
+        if(e.path == filename){
+            std::cout << "already exists, NOT creating\n";
+            return;
+        }
+    }
+    fs::create_directory(filewindow.currentPath / filename);
+    _update_window(filewindow, filewindow.currentPath, true);
+};
 
 void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
     timer += 0.0025;
@@ -735,19 +806,6 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
 int main()
 {
     sf::RenderWindow introWindow;
-    introWindow.create(sf::VideoMode({ 300, 100 }), "press the                number     ");
-    while (introWindow.isOpen()) {
-        introWindow.clear(sf::Color(20, 23, 36));
-
-        while (std::optional event = introWindow.pollEvent()) // event-uri/actiuni din sisteme periferice
-        {
-            if (event->is<sf::Event::Closed>())
-                introWindow.close();
-        }
-
-        introWindow.display();
-    }
-
     int strongCurrent;
     std::string str;
     sf::RenderWindow mainWindow;
@@ -765,7 +823,7 @@ int main()
     _update_window(filewindow[1], "C:\\", true);
 
 
-    mainWindow.create(sf::VideoMode({ 1400, 600 }), "MyCommander");
+    mainWindow.create(sf::VideoMode({ 1200, 600 }), "MyCommander");
 
     _thumb_from_scroll(filewindow[0], scrollbar[0]);
     _thumb_from_scroll(filewindow[1], scrollbar[1]);
@@ -810,6 +868,18 @@ int main()
             else scrollbarClicked = false;
             if (event->is<sf::Event::MouseButtonPressed>()) {
                 switch(_get_menu_index(mainWindow)){
+                    case FILE_NEW_FILE:{
+                        fs::path filename = _get_filename_from_prompt();
+                        _command_new_file(filewindow[strongCurrent], filename);
+                        _update_window(filewindow[current], filewindow[current].currentPath, true);
+                        break;
+                    }
+                    case FILE_NEW_DIRECTORY:{
+                        fs::path filename = _get_filename_from_prompt();
+                        _command_new_directory(filewindow[strongCurrent], filename);
+                        _update_window(filewindow[current], filewindow[current].currentPath, true);
+                        break;
+                    }
                     case FILE_COPY:{
                         _command_copy(filewindow[strongCurrent], filewindow[1-strongCurrent]);
                         break;
@@ -820,6 +890,12 @@ int main()
                     }
                     case FILE_DELETE:{
                         _command_delete(filewindow[strongCurrent]);
+                        break;
+                    }
+                    case FILE_RENAME:{
+                        fs::path filename = _get_filename_from_prompt();
+                        _command_rename(filewindow[strongCurrent], filename);
+                        _update_window(filewindow[current], filewindow[current].currentPath, true);
                         break;
                     }
                 }
@@ -887,6 +963,7 @@ int main()
             if(filewindow[current].isSearching){
                 if(event->is<sf::Event::TextEntered>()){
                     auto key = event->getIf<sf::Event::TextEntered>()->unicode;
+                    std::cout << key << "\n";
                     if(key == 10 || key == 13){ //ENTER
                     }
                     else if(key == 27){ //ESCAPE
