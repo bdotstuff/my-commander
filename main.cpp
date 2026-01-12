@@ -39,8 +39,8 @@ namespace fs = std::filesystem;
 enum sortingType{
     SORT_NAME,
     SORT_DATE,
-    SORT_TYPE,
     SORT_SIZE,
+    SORT_TYPE,
 };
 
 enum fileAction{
@@ -363,7 +363,7 @@ void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
         attributeButtons[side].push_back(box);
 
         attr.setPosition(sf::Vector2f(window.getSize().x - ((1-side)*window.getSize().x/2)-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90));
-        attr.setString("Date (H Y/D/M)");
+        attr.setString("Date (H Y/M/D)");
         box.position = {window.getSize().x - float(((1-side)*window.getSize().x/2))-SCROLLBAR_WIDTH-PADDING_RIGHT_EXT-PADDING_RIGHT_SIZE-PADDING_RIGHT_DATE, 90};
         box.size = {attr.getGlobalBounds().size.x + PADDING_LEFT, 20};
         _draw_underline(window, box, attr);
@@ -924,6 +924,10 @@ int main()
                         break;
                     }
                 }
+                if(filewindow[current].sort == _get_attribute_index(mainWindow, current)){
+                    filewindow[current].sortOrder = 1 - filewindow[current].sortOrder;
+                }
+                else{
                 switch(_get_attribute_index(mainWindow, current)){
                     case 0:{
                         filewindow[current].sort = SORT_NAME;
@@ -946,6 +950,8 @@ int main()
                         break;
                     }
                 }
+                }
+                _update_window(filewindow[current], filewindow[current].currentPath, true);
                 if (_get_rootchange_index(mainWindow, current) != -1) {
                     std::string fname = filewindow[current].currentPath.root_name().string();
                     fname[0] = char(int(fname[0]) + 1);
