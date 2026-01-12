@@ -349,6 +349,8 @@ void _draw_root_change_buttons(sf::RenderWindow &window) {
 }
 
 void _draw_attribute_buttons(sf::RenderWindow &window, int side) {
+    attributeButtons[0].clear();
+    attributeButtons[1].clear();
     for (int side = 0; side < 2; side++) {
         sf::Text attr(font_listFile);
         attr.setCharacterSize(16);
@@ -926,6 +928,7 @@ int main()
                 }
                 if(filewindow[current].sort == _get_attribute_index(mainWindow, current)){
                     filewindow[current].sortOrder = 1 - filewindow[current].sortOrder;
+                    _update_window(filewindow[current], filewindow[current].currentPath, false);
                 }
                 else{
                 switch(_get_attribute_index(mainWindow, current)){
@@ -951,7 +954,6 @@ int main()
                     }
                 }
                 }
-                _update_window(filewindow[current], filewindow[current].currentPath, true);
                 if (_get_rootchange_index(mainWindow, current) != -1) {
                     std::string fname = filewindow[current].currentPath.root_name().string();
                     fname[0] = char(int(fname[0]) + 1);
