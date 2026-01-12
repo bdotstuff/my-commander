@@ -83,12 +83,15 @@ struct scrollBar{
 
 std::vector<sf::Rect<float>> menuButtons;
 std::vector<sf::Rect<float>> attributeButtons[2], rootButtons[2];
+sf::Rect<float> sortButtons[2];
 
 sf::Font font_listFile("utfont.ttf");
 sf::Texture texture_cmdIconPlaceholder;
 sf::Texture texture_dirIcon;
 sf::Texture texture_regularIcon;
 sf::Texture texture_backIcon;
+sf::Texture texture_ascendingIcon;
+sf::Texture texture_descendingIcon;
 
 void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
     sf::Text text(font_listFile);
@@ -190,6 +193,21 @@ void _draw_lists(fileWindow filewindow[2], sf::RenderWindow &window){
                 filewindow[side].list[i].areaBox = areaBox;
             }
         }
+    }
+}
+
+void _draw_sort_buttons(fileWindow filewindow[2], sf::RenderWindow &window){
+    sf::Sprite iconsprite(texture_descendingIcon);
+    for(int side=0;side<2;side++){
+        if(filewindow[side].sortOrder == 0){
+            iconsprite.setTexture(texture_ascendingIcon);
+        }
+        else{
+            iconsprite.setTexture(texture_descendingIcon);
+        }
+        iconsprite.setPosition({PADDING_LEFT+side*window.getSize().x/2-5, 90+5});
+        sortButtons[side].position = iconsprite.getPosition();
+        window.draw(iconsprite);
     }
 }
 
@@ -829,6 +847,9 @@ void _draw_ui(sf::RenderWindow &window, fileWindow filewindow[2], float &timer){
 
 int main()
 {
+    sortButtons[0].size = {16, 16};
+    sortButtons[1].size = {16, 16};
+
     filewindow[0].sortOrder = 0;
     filewindow[1].sortOrder = 0;
     int strongCurrent;
@@ -840,7 +861,9 @@ int main()
     if(!texture_cmdIconPlaceholder.loadFromFile("spritesheet.png", false, sf::IntRect({0, 0}, {16, 16})) ||
        !texture_dirIcon.loadFromFile("spritesheet.png", false, sf::IntRect({16, 0}, {16, 16})) ||
        !texture_regularIcon.loadFromFile("spritesheet.png", false, sf::IntRect({32, 0}, {16, 16})) ||
-       !texture_backIcon.loadFromFile("spritesheet.png", false, sf::IntRect({48, 0}, {16, 16}))
+       !texture_backIcon.loadFromFile("spritesheet.png", false, sf::IntRect({48, 0}, {16, 16})) ||
+       !texture_descendingIcon.loadFromFile("spritesheet.png", false, sf::IntRect({64, 0}, {16, 16})) ||
+       !texture_ascendingIcon.loadFromFile("spritesheet.png", false, sf::IntRect({80, 0}, {16, 16}))
        ) return -1;
 
     current = 0;
@@ -866,6 +889,7 @@ int main()
         _draw_attribute_buttons(mainWindow, 0);
         _draw_attribute_buttons(mainWindow, 1);
         _draw_root_change_buttons(mainWindow);
+        _draw_sort_buttons(filewindow, mainWindow);
 
         historywindow[0] = _draw_list_history_button(sf::Vector2f(PADDING_LEFT, 30), filewindow[0], mainWindow);
         historywindow[1] = _draw_list_history_button(sf::Vector2f(mainWindow.getSize().x / 2 + PADDING_LEFT, 30), filewindow[1], mainWindow);
@@ -894,6 +918,10 @@ int main()
             }
             else scrollbarClicked = false;
             if (event->is<sf::Event::MouseButtonPressed>()) {
+                if (sortButtons[current].contains(sf::Vector2<float>(sf::Mouse::getPosition(mainWindow)))) {
+                    filewindow[current].sortOrder = 1 - filewindow[current].sortOrder;
+                    _update_window(filewindow[current], filewindow[current].currentPath, true);
+                };
                 switch(_get_menu_index(mainWindow)){
                     case FILE_NEW_FILE:{
                         fs::path filename = _get_filename_from_prompt();
